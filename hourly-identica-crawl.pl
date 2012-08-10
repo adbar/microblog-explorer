@@ -19,7 +19,7 @@ my $start_time = time();
 # -> problems with timeout
 
 my $furl = Furl::HTTP->new(
-        agent   => 'Perl-Furl',
+        agent   => 'Microblog-Explorer-0.1',
         timeout => 5,
 	headers => [ 'Accept-Encoding' => 'gzip' ], # may run into problems (error to catch)
 );
