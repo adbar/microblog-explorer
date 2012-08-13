@@ -45,6 +45,16 @@ The API could be faster, but an account is needed (which is not the case for the
 The Bash script deletes duplicates, it can be run before an export of the data or every day to reduce the size of the files.
 
 
+Language identification
+-----------------------
+
+There are two scripts in the directory named 'langid' which are to be used with the [langid.py language identification system](https://github.com/saffsd/langid.py).
+
+The Perl script fetches the webpages of a list, strips the HTML code, sends raw text to a server instance of langid.py and retrieves the answer.
+
+The following list can be examined using the Python script which features a summary of the languages concerned and which also enables to gather a selection of links by choosing relevant language codes.
+
+
 Related Projects
 --------------
 
