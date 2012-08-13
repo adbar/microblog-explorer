@@ -29,9 +29,9 @@ Long-distance miner
 
 The miner explores the user network starting from a 'USERS_TODO' list (which can be copied from the 'result-int' output of the other script). It guesses the total number of tweets by user and retrieves up to 400 of them (i.e. 20 pages per user). It performs the same operation with the following users and the followers.
 
-Because of this exponential number of requests, it is wise to explore no more than a few hundred profiles at once. The script starts 4 threads and allows for a two seconds break between two requests on the same profile.
+Because of this exponential number of requests, it is wise to explore no more than a few hundred profiles at once. The script starts 4 threads and allows for a three seconds break between two requests on the same profile.
 
-This script is still under development, it has not reached its optimal efficiency (neither on the client side, nor on identi.ca's). The error rate is around 10%, although the urls seem to be valid.
+This script is still under development, it has not reached its optimal efficiency (neither on the client side, nor on identi.ca's).
 
 Example : perl long-distance-miner.pl 100 (provided there are 100 new URLs in the todo-list).
 Writes a report on STDOUT and 5 files.

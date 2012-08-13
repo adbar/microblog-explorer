@@ -10,14 +10,15 @@ use strict;
 use warnings;
 use Furl; # supposed to be faster, must be installed through CPAN
 #use utf8; use open ':encoding(utf8)'; doesn't seem to be necessary here
+use URI::Split qw(uri_split uri_join);
 use threads;
 use threads::shared;
-use Time::HiRes qw( time );
+use Time::HiRes qw( time sleep );
 
 
 die 'Usage: perl XX.pl [number of links to scan]' if (scalar (@ARGV) != 1);
 my $ucount = $ARGV[0];
-my $sleepfactor = 2;
+my $sleepfactor = 3; # 2.5 worked
 
 my ($path, @users, %users_done);
 my (@ushared, @external, @internal, @done, $seen_users, $errors, $nreq, @errurls) :shared;
@@ -40,7 +41,7 @@ if (-e $usersdone) {
 if (-e $userslist) {
 	open (my $ulist, '<', $userslist);
 	while (<$ulist>) {
-		chomp($_);
+		chomp;
 		unless (exists $users_done{$_}) {
 			push (@users, $_);	
 		}
@@ -55,7 +56,7 @@ my $start_time = time();
 
 my $furl = Furl::HTTP->new(
         agent   => 'Microblog-Explorer-0.1',
-        timeout => 5,
+        timeout => 6, # 5 worked
 	headers => [ 'Accept-Encoding' => 'gzip' ], # may run into problems (error to catch)
 );
 
@@ -80,6 +81,8 @@ my $thrfour = threads->create(\&thread, @thr4);
 sub thread {
 	my @list = @_;
 	foreach my $intlink (@list) {
+		%seen = ();
+		@internal = grep { ! $seen{ $_ }++ } @internal; # free some memory space
 		# timeline
 		my $page = fetch($intlink);
 		my ($ext, $int) = extract($page);
@@ -102,7 +105,7 @@ sub thread {
 					($ext, $int) = extract($page);
 					push (@external, @$ext) if defined @$ext;
 					push (@internal, @$int) if defined @$int;
-					sleep($sleepfactor);
+					sleep ($sleepfactor);
 				}
 			}
 			push (@done, $intlink . "\t" . $max);
@@ -169,7 +172,7 @@ my @users_todo = (@users, @ushared);
 %seen = ();
 @users_todo = grep { ! $seen{ $_ }++ } @users_todo;
 
-print "total int:\t" . scalar (@internal) . "\t(uniqueness ratio: " . sprintf("%.1f", $inttotal/scalar (@internal)) . ")\n";
+print "total int:\t" . scalar (@internal) . "\n";
 print "total ext:\t" . scalar (@external) . "\t(uniqueness ratio: " . sprintf("%.1f", $exttotal/scalar (@external)) . ")\n";
 
 open (my $resultint, '>>', 'ld-int');
@@ -235,7 +238,12 @@ sub extract {
 				if (defined $1) {
 					unless ( ($1 =~ m/gif|png|jpg|jpeg$/) || ($1 =~ m/^[0-9]/) ) {
 						my $temp = $1;
-						$temp =~ s/(?|\&amp;)utm_.*$//;
+						#$temp =~ s/\?utm_.*$//; # may not cover all the cases
+						# suppression of bad hostnames and eventual query parameters :
+						my ($scheme, $auth, $path, $query, $frag) = uri_split($temp);
+						next if (length($auth) < 5);
+						$temp = uri_join($scheme, $auth, $path);
+						$temp = lc($temp);
 						push (@ext, $temp);
 					}
 				}

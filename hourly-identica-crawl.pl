@@ -9,7 +9,8 @@
 use strict;
 use warnings;
 use Furl; # supposed to be faster, must be installed through CPAN
-#use utf8; use open ':encoding(utf8)'; doesn't seem to be necessary here
+# use utf8; use open ':encoding(utf8)'; doesn't seem to be necessary here
+use URI::Split qw(uri_split uri_join);
 use threads;
 use threads::shared;
 use Time::HiRes qw( time );
@@ -37,6 +38,7 @@ my $dsplist = 'daily_spare';
 if (-e $hsplist) {
 	open (my $hsp, '<', $hsplist);
 	while (<$hsp>) {
+		chomp;
 		$hsp{$_}++;
 	}
 	close($hsp);
@@ -45,6 +47,7 @@ if (-e $hsplist) {
 if (-e $dsplist) {
 	open (my $dsp, '<', $dsplist);
 	while (<$dsp>) {
+		chomp;
 		$daily_spare{$_}++;
 	}
 	close($dsp);
@@ -121,7 +124,7 @@ sub thread {
 			if ($mean <= 5) {
 				$daily_spare{$intlink}++;
 			}
-			if ( ($mean > 5) && ($mean <= 20) ) {
+			if ( ($mean > 5) && ($mean <= 25) ) {
 				(push @hourly_spare, $intlink);
 			}
 		}
@@ -210,7 +213,12 @@ sub extract {
 				if (defined $1) {
 					unless ( ($1 =~ m/gif|png|jpg|jpeg$/) || ($1 =~ m/^[0-9]/) ) {
 						my $temp = $1;
-						$temp =~ s/(?|&amp;)utm_.*$//;
+						#$temp =~ s/\?utm_.*$//; # may not cover all the cases
+						# suppression of bad hostnames and eventual query parameters :
+						my ($scheme, $auth, $path, $query, $frag) = uri_split($temp);
+						next if (length($auth) < 5);
+						$temp = uri_join($scheme, $auth, $path);
+						$temp = lc($temp);
 						push (@ext, $temp);
 					}
 				}
