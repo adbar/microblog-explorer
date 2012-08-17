@@ -12,6 +12,7 @@ from collections import defaultdict
 
 import optparse
 
+
 ## Parse arguments and options
 parser = optparse.OptionParser(usage='usage: %prog [options] arguments')
 
@@ -32,6 +33,14 @@ if options.inputfile is None:
 langd = defaultdict(int)
 urld = defaultdict(int)
 intd = defaultdict(int)
+codes = dict()
+
+langfile = open('ISO_639-1_codes', 'r')
+# adapted from this source : https://gist.github.com/1262033
+for line in langfile:
+	columns = line.split(' ')
+	codes[columns[0].strip("':")] = columns[1].strip("',\n")
+langfile.close()
 
 if options.lcodes is True:
 	inp = raw_input('Languages wanted (comma-separated codes) : ')
@@ -54,9 +63,18 @@ f.close()
 
 ## Display and print the results
 print (len(urld), 'total unique urls')
+print ('-Language-\t', '-Code-', '-Docs-', '-%-', sep='\t')
 for l in sorted(langd, key=langd.get, reverse=True):
+	if l in codes:
+		code = codes[l]
+	else:
+		code = l
+	if len(code) >= 8:
+		code = code + "\t"
+	else:
+		code = code + "\t\t"
 	pcent = (langd[l] / len(urld))*100
-	print (l, langd[l], '%.1f' % round(pcent, 1), sep='\t')
+	print (code, l, langd[l], '%.1f' % round(pcent, 1), sep='\t')
 
 if options.lcodes is True:
 	if options.outputfile is not None:
@@ -64,9 +82,13 @@ if options.lcodes is True:
 	for lang in langlist:
 		for key in urld:
 			if urld[key] == lang:
-				if options.outputfile is not None:
-					out.write(key + '\t' + urld[key] + '\t' + intd[key] + "\n")
+				if urld[key] in codes:
+					code = codes[urld[key]]
 				else:
-					print (key, urld[key], intd[key], sep='\t')
+					code = urld[key]
+				if options.outputfile is not None:
+					out.write(key + '\t' + code + '\t' + urld[key] + '\t' + intd[key] + "\n")
+				else:
+					print (key, code, urld[key], intd[key], sep='\t')
 	if options.outputfile is not None:	
 		out.close()

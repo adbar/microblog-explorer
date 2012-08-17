@@ -14,7 +14,7 @@ The scripts are under heavy development, they work but are not optimized yet. Th
 Crawlers
 --------
 
-## Hourly crawl
+### Hourly crawl
 
 This Perl script is meant to gather recent links every hour, which currently translates to about 300 page views in about three minutes (4 threads, 0.5 sec sleep time between page views).
 
@@ -27,7 +27,7 @@ Usage : without arguments.
 Writes a report on STDOUT and 5 files.
 
 
-## Long-distance miner
+### Long-distance miner
 
 The miner explores the user network starting from a 'USERS_TODO' list (which can be copied from the 'result-int' output of the other script). It guesses the total number of tweets by user and retrieves up to 400 of them (i.e. 20 pages per user). It performs the same operation with the following users and the followers.
 
@@ -42,7 +42,7 @@ Example (provided there are 100 new URLs in the `USERS_TODO` list) :
 Writes a report on STDOUT and 5 files.
 
 
-## Remarks
+### Remarks
 
 The API could be faster, but an account is needed (which is not the case for the Twitter API).
 
@@ -57,7 +57,7 @@ Language identification
 There are two scripts in the directory named 'langid' which are to be used with the [langid.py language identification system](https://github.com/saffsd/langid.py).
 
 
-## Download and language check
+### Download and language check
 
 This Perl script fetches the webpages of a list, strips the HTML code, sends raw text to a server instance of langid.py and retrieves the answer.
 
@@ -68,7 +68,7 @@ Example (provided there is a list named `LINKS_TODO`) :
     perl fetch+lang-check.pl 200
 
 
-## Get statistics and interesting links
+### Get statistics and interesting links
 
 The list written by the Perl script can be examined using a Python script which features a summary of the languages concerned (language code, number of links and percentage). It also to gather a selection of links by choosing relevant language codes.
 
