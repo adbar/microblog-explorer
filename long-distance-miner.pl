@@ -9,7 +9,8 @@
 use strict;
 use warnings;
 use Furl; # supposed to be faster, must be installed through CPAN
-#use utf8; use open ':encoding(utf8)'; doesn't seem to be necessary here
+require Compress::Zlib; # faster file transmission
+# use utf8; use open ':encoding(utf8)'; doesn't seem to be necessary here
 use URI::Split qw(uri_split uri_join);
 use threads;
 use threads::shared;
@@ -18,7 +19,7 @@ use Time::HiRes qw( time sleep );
 
 die 'Usage: perl XX.pl [number of links to scan]' if (scalar (@ARGV) != 1);
 my $ucount = $ARGV[0];
-my $sleepfactor = 3; # 2.5 worked
+my $sleepfactor = 3;
 
 my ($path, @users, %users_done);
 my (@ushared, @external, @internal, @done, $seen_users, $errors, $nreq, @errurls) :shared;
@@ -56,7 +57,7 @@ my $start_time = time();
 
 my $furl = Furl::HTTP->new(
         agent   => 'Microblog-Explorer-0.1',
-        timeout => 6, # 5 worked
+        timeout => 6,
 	headers => [ 'Accept-Encoding' => 'gzip' ], # may run into problems (error to catch)
 );
 
@@ -82,7 +83,9 @@ sub thread {
 	my @list = @_;
 	foreach my $intlink (@list) {
 		%seen = ();
+		{ no warnings 'uninitialized';
 		@internal = grep { ! $seen{ $_ }++ } @internal; # free some memory space
+		}
 		# timeline
 		my $page = fetch($intlink);
 		my ($ext, $int) = extract($page);
@@ -241,8 +244,10 @@ sub extract {
 						#$temp =~ s/\?utm_.*$//; # may not cover all the cases
 						# suppression of bad hostnames and eventual query parameters :
 						my ($scheme, $auth, $path, $query, $frag) = uri_split($temp);
-						next if (length($auth) < 5);
-						$temp = uri_join($scheme, $auth, $path);
+						{ no warnings 'uninitialized';
+							next if (length($auth) < 5);
+							$temp = uri_join($scheme, $auth, $path);
+						}
 						$temp = lc($temp);
 						push (@ext, $temp);
 					}

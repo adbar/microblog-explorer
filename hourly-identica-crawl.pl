@@ -9,13 +9,16 @@
 use strict;
 use warnings;
 use Furl; # supposed to be faster, must be installed through CPAN
+require Compress::Zlib; # faster file transmission
 # use utf8; use open ':encoding(utf8)'; doesn't seem to be necessary here
 use URI::Split qw(uri_split uri_join);
 use threads;
 use threads::shared;
-use Time::HiRes qw( time );
+use Time::HiRes qw( time sleep );
 
 my $start_time = time();
+
+my $sleepfactor = 0.5;
 
 # -> problems with timeout
 
@@ -128,6 +131,7 @@ sub thread {
 				(push @hourly_spare, $intlink);
 			}
 		}
+		sleep ($sleepfactor);
 	}
 }
 
@@ -216,8 +220,10 @@ sub extract {
 						#$temp =~ s/\?utm_.*$//; # may not cover all the cases
 						# suppression of bad hostnames and eventual query parameters :
 						my ($scheme, $auth, $path, $query, $frag) = uri_split($temp);
-						next if (length($auth) < 5);
-						$temp = uri_join($scheme, $auth, $path);
+						{ no warnings 'uninitialized';
+							next if (length($auth) < 5);
+							$temp = uri_join($scheme, $auth, $path);
+						}
 						$temp = lc($temp);
 						push (@ext, $temp);
 					}

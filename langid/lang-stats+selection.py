@@ -15,26 +15,29 @@ import optparse
 ## Parse arguments and options
 parser = optparse.OptionParser(usage='usage: %prog [options] arguments')
 
-parser.add_option('-lc', '--language-codes',
+parser.add_option('-l', '--language-codes',
 	action="store_true", dest="lcodes", default=False,
-	help="be prompted for language codes to show")
-parser.add_option("-f", "--file", dest="filename",
+	help="prompt for language codes and output of corresponding links")
+parser.add_option("-i", "--input-file", dest="inputfile",
 	help="input file name", metavar="FILE")
+parser.add_option("-o", "--output-file", dest="outputfile",
+	help="output file name (default : output to STDOUT)", metavar="FILE")
 
 options, args = parser.parse_args()
 
-if options.filename is None:
-	parser.error('No filename given')
+if options.inputfile is None:
+	parser.error('No input file given')
 
 ## Initialize
 langd = defaultdict(int)
 urld = defaultdict(int)
+intd = defaultdict(int)
 
 if options.lcodes is True:
 	inp = raw_input('Languages wanted (comma-separated codes) : ')
 	langlist = inp.split(',')
 
-f = open(options.filename, 'r')
+f = open(options.inputfile, 'r')
 
 
 ## Parse input file
@@ -44,6 +47,8 @@ for line in f:
 		if columns[0] not in urld:
 			langd[columns[1]] += 1
 			urld[columns[0]] = columns[1]
+			if options.lcodes is True:
+				intd[columns[0]] = columns[2].rstrip()
 f.close()
 
 
@@ -54,9 +59,14 @@ for l in sorted(langd, key=langd.get, reverse=True):
 	print (l, langd[l], '%.1f' % round(pcent, 1), sep='\t')
 
 if options.lcodes is True:
-	out = open('sample-choice', 'w')
+	if options.outputfile is not None:
+		out = open(options.outputfile, 'w')
 	for lang in langlist:
 		for key in urld:
 			if urld[key] == lang:
-				out.write(key + '\t' + urld[key] + '\n') 
-	out.close()
+				if options.outputfile is not None:
+					out.write(key + '\t' + urld[key] + '\t' + intd[key] + "\n")
+				else:
+					print (key, urld[key], intd[key], sep='\t')
+	if options.outputfile is not None:	
+		out.close()
