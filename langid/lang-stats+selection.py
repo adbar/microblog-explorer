@@ -35,7 +35,10 @@ urld = defaultdict(int)
 intd = defaultdict(int)
 codes = dict()
 
-langfile = open('ISO_639-1_codes', 'r')
+try:
+	langfile = open('ISO_639-1_codes', 'r')
+except IOError:
+	sys.exit("could not open the file containing the language codes")
 # adapted from this source : https://gist.github.com/1262033
 for line in langfile:
 	columns = line.split(' ')
@@ -46,8 +49,10 @@ if options.lcodes is True:
 	inp = raw_input('Languages wanted (comma-separated codes) : ')
 	langlist = inp.split(',')
 
-f = open(options.inputfile, 'r')
-
+try:
+	f = open(options.inputfile, 'r')
+except IOError:
+	sys.exit("could not open input file")
 
 ## Parse input file
 for line in f:
@@ -78,7 +83,10 @@ for l in sorted(langd, key=langd.get, reverse=True):
 
 if options.lcodes is True:
 	if options.outputfile is not None:
-		out = open(options.outputfile, 'w')
+		try:
+			out = open(options.outputfile, 'w')
+		except IOError:
+			sys.exit("could not open output file")
 	for lang in langlist:
 		for key in urld:
 			if urld[key] == lang:

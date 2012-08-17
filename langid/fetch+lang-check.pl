@@ -29,25 +29,25 @@ die 'Usage: perl XX.pl [number of links to scan]' if (scalar (@ARGV) != 1);
 my $links_count = $ARGV[0];
 
 my @output :shared;
-my (@urls, @done, %links_done, %hostnames, $finaluri, $clean_text, @check_again);
+my (@urls, @done, %links_done, %hostnames, $finaluri, $clean_text, $confidence, $lang, $suspicious, @check_again);
 
-my $linkstodo = 'LINKS_TODO';
-my $linksdone = 'LINKS_DONE';
+my $todo = 'LINKS_TODO';
+my $done = 'RESULTS_langid';
 
-if (-e $linksdone) {
-	open (my $ldone, '<', $linksdone);
+if (-e $done) {
+	open (my $ldone, '<', $done);
 	while (<$ldone>) {
 		chomp;
-		$links_done{$_}++;
-		my ($scheme, $auth, $path, $query, $frag) = uri_split($_);
-		my $temp = lc(uri_join($scheme, $auth));
-		$hostnames{$temp}++;
+		my @temp = split ("\t", $_);
+		$hostnames{$temp[0]}++;
+		my $join = $temp[0] . $temp[1];
+		$links_done{$join}++;
 	}
 	close($ldone);
 }
 
-if (-e $linkstodo) {
-	open (my $ltodo, '<', $linkstodo);
+if (-e $todo) {
+	open (my $ltodo, '<', $todo);
 	while (<$ltodo>) {
 		chomp($_);
 		unless (exists $links_done{$_}) {
@@ -72,7 +72,7 @@ my @redirection = ('t.co', 'j.mp', 'is.gd', 'wp.me', 'bit.ly', 'goo.gl', 'xrl.us
 my $furl = Furl::HTTP->new(
         agent   => 'Microblog-Explorer-0.1',
         timeout => 5,
-	#headers => [ 'Accept-Encoding' => 'gzip' ],  # may run into problems (error to catch)
+	#headers => [ 'Accept-Encoding' => 'gzip' ],  # useless here
 );
 
 my ($req, $res);
@@ -85,10 +85,11 @@ $ua->timeout( 5 );
 
 ## Main loop
 my $i = 0;
-open (my $out, '>>', 'RESULTS_langid');
+my $stack = 0;
+open (my $out, '>>', $done);
 
 foreach my $url (@urls) {
-
+	$stack++;
 	# check redirection
 	$url =~ m/https?:\/\/(.+?)\//;
 	my $short = $1;
@@ -133,7 +134,7 @@ foreach my $url (@urls) {
 
 		{ no warnings 'uninitialized';
 			#my $body = $furl->get($finaluri);
-			next if (length($body) < 20);
+			next if (length($body) < 100); # could be another value 
 			my $h = new HTML::Clean(\$body);
 			$h->strip();
 			my $data = $h->data();
@@ -142,6 +143,7 @@ foreach my $url (@urls) {
 			$clean_text = $hs->parse( $$data );
 			$hs->eof;
 
+			next if (length($clean_text) < 100); # could also be another value
 			$clean_text = encode('UTF-8', $clean_text);
 		}
 		### WIDESTRING ERROR if no re-encoding, but re-encoding may break langid
@@ -155,12 +157,28 @@ foreach my $url (@urls) {
 		content	=> $clean_text,
 	);
 	if ($code == 200) {
+			$suspicious = 0;
 			$res =~ m/"confidence": (.+?), "language": "([a-z]+?)"/;
-			if ( ($2 eq "zh") || ($2 eq "qu") ) { # problems with encoding changes, zh can also be bg, ja, ru, etc. 
-				push (@check_again, $finaluri);
+			$confidence = $1;
+			$lang = $2;
+
+			# problems with encoding changes, these codes can also be bg, ja, ru, etc.
+			if ( ($lang eq "zh") || ($lang eq "qu") || ($lang eq "ps") || ($lang eq "la") ) { 
+				$suspicious = 1;
+			}
+			elsif ( ($lang eq "el") && ($auth !~ m/\.gr$/) && ($confidence != 1) ) {
+				$suspicious = 1;
+			}
+			elsif ( ($lang eq "lb") && ($auth !~ m/\.lu$/) ) {
+				$suspicious = 1;
+			}
+
+			if ($suspicious == 1) {
+				my $checkurl = lc($finaluri) . "\t" . $path . "\t" . $lang . "\t" . $confidence;
+				push (@check_again, $checkurl);
 			}
 			else {
-			my $output = $finaluri . "\t" . $2 . "\t" . $1;
+			my $output = lc($finaluri) . "\t" . lc($path) . "\t" . $lang . "\t" . $confidence;
 			print $out $output . "\n";
 			}
 		}
@@ -172,11 +190,7 @@ foreach my $url (@urls) {
 
 close($out);
 
-open (my $ldone, '>', 'LINKS_DONE');
-print $ldone join("\n", @done);
-close($ldone);
-
-
+splice(@urls, 0, $stack);
 open (my $ltodo, '>', 'LINKS_TODO');
 print $ltodo join("\n", @urls);
 close($ltodo);
@@ -187,5 +201,6 @@ close($check_again);
 
 print "urls: " . $links_count . "\n";
 print "visited: " . $i . "\n";
+print "suspicious: " . scalar(@check_again) . "\n";
 my $end_time = time();
 print "execution time: " . sprintf("%.2f\n", $end_time - $start_time);
