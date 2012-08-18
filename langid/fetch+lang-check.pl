@@ -1,11 +1,12 @@
 #!/usr/bin/perl
 
 
-###	This script is part of the microblog-explorer project (https://github.com/adbar/microblog-explorer).
-###	It is brought to you by Adrien Barbaresi.
-###	It is freely available under the GNU GPL v3 license (http://www.gnu.org/licenses/gpl.html).
+###	This script is part of the Microblog-Explorer project (https://github.com/adbar/microblog-explorer).
+###	Copyright (C) Adrien Barbaresi, 2012.
+###	The Microblog-Explorer is freely available under the GNU GPL v3 license (http://www.gnu.org/licenses/gpl.html).
 
-# This script is to be used in combination with a language identification system (https://github.com/saffsd/langid.py) running as a server on port 9008. Please adjust the host parameter to your configuration (see below).
+# This script is to be used in combination with a language identification system (https://github.com/saffsd/langid.py) running as a server on port 9008 : python langid.py -s
+# Please adjust the host parameter to your configuration (see below).
 
 
 use strict;

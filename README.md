@@ -2,17 +2,20 @@ Microblog-Explorer
 ==================
 
 
-The microblog-explorer project is about gathering links from social networks to use them as crawling seeds.
+The Microblog-Explorer project is about gathering links from social networks to use them as crawling seeds.
 
 Other interests could be text analysis or network visualization, but they are not the priority right now.
 
-The files uploaded so far enable to gather external (and internal) links from identi.ca. The advantages compared to Twitter include the CC license of the messages, the absence of limitations (to my knowledge) and the relative small amount of messages (which can also be a problem).
-
 The scripts are under heavy development, they work but are not optimized yet. They are tested on UNIX (Debian flavours), they should work on other UNIX-like systems provided the modules needed are installed.
 
+The links that are obviously pointing at images or videos are filtered out.
 
-Crawlers
---------
+
+Identi.ca
+---------
+
+The files uploaded so far enable to gather external (and internal) links from identi.ca. The advantages compared to Twitter include the CC license of the messages, the absence of limitations (to my knowledge) and the relative small amount of messages (which can also be a problem).
+
 
 ### Hourly crawl
 
@@ -51,6 +54,17 @@ The Bash script deletes duplicates, it can be run before an export of the data o
     bash remove-duplicates.sh
 
 
+Reddit
+------
+
+This crawler gathers (nearly) all external and internal links for a given reddit page. It is still experimental. 
+
+Example :
+
+	python reddit-crawl.py --starter http://www.reddit.com/r/Polska/
+
+
+
 Language identification
 -----------------------
 
@@ -60,6 +74,10 @@ There are two scripts in the directory named 'langid' which are to be used with 
 ### Download and language check
 
 This Perl script fetches the webpages of a list, strips the HTML code, sends raw text to a server instance of langid.py and retrieves the answer.
+
+The langid.py server can be started as follows :
+
+    python langid.py -s
 
 Usage : takes a number of links to analyze as argument
 
