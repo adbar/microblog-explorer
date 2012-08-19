@@ -59,12 +59,17 @@ except IOError:
 ## Parse input file
 for line in f:
 	columns = line.split('\t')
-	if len(columns) == 3:
+	if len(columns) == 3 or len(columns) == 4:
+		if len(columns) == 3:
+			marker = 1
+		if len(columns) == 4:
+			marker = 2
 		if columns[0] not in urld:
-			langd[columns[1]] += 1
-			urld[columns[0]] = columns[1]
+			langd[columns[marker]] += 1
+			urld[columns[0]] = columns[marker]
 			if options.lcodes is True:
-				intd[columns[0]] = columns[2].rstrip()
+				marker += 1
+				intd[columns[0]] = columns[marker].rstrip()
 f.close()
 
 

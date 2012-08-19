@@ -11,6 +11,7 @@
 
 use strict;
 use warnings;
+use Getopt::Long;
 use open ':encoding(utf8)';
 use Encode qw(encode);
 require Compress::Zlib;
@@ -26,14 +27,35 @@ use HTML::Clean;
 use Time::HiRes qw( time );
 
 
-die 'Usage: perl XX.pl [number of links to scan]' if (scalar (@ARGV) != 1);
-my $links_count = $ARGV[0];
 
-my @output :shared;
-my (@urls, @done, %links_done, %hostnames, $finaluri, $clean_text, $confidence, $lang, $suspicious, @check_again);
+my ($help, $hostreduce, $wholelist, $fileprefix, $links_count);
 
-my $todo = 'LINKS_TODO';
-my $done = 'RESULTS_langid';
+usage() if ( @ARGV < 1
+	or ! GetOptions ('h|help' => \$help, 'fileprefix|fp=s' => \$fileprefix, 'hostreduce|hr' => \$hostreduce, 'all|a' => \$wholelist, 'links|l=i' => \$links_count)
+	or defined $help
+	or (defined $wholelist && defined $links_count) );
+
+sub usage {
+	print "Unknown option: @_\n" if ( @_ );
+	print "Usage: perl XX.pl [--help|-h] [--fileprefix|-fp] prefix [--all|-a] [--links|-l] number [--hostreduce|-hr] \n\n";
+	print "prefix : used to identify the files\n";
+	print "EITHER --all OR a given number of links\n";
+	print "hostreduce : keep only the hostname in each url\n\n";
+	exit;
+}
+
+
+my (@urls, @done, %links_done, %hostnames, $finaluri, $clean_text, $confidence, $lang, $suspicious, @check_again, @output);
+
+my $todo = 'LINKS-TODO';
+my $done = 'RESULTS-langid';
+my $tocheck = 'LINKS-TO-CHECK';
+
+if (defined $fileprefix) {
+	$todo = $fileprefix . "_" . $todo;
+	$done = $fileprefix . "_" . $done;
+	$tocheck = $fileprefix . "_" . $tocheck;
+}
 
 if (-e $done) {
 	open (my $ldone, '<', $done);
@@ -58,12 +80,12 @@ if (-e $todo) {
 	close($ltodo);
 }
 else {
-	die 'no todo list';
+	die 'No todo list found under this file name: ' . $todo;
 }
 
 my %seen = ();
 @urls = grep { ! $seen{ $_ }++ } @urls;
-die 'not enough links in the list' if (scalar(@urls) < $links_count);
+die 'not enough links in the list' if ((defined $links_count) && (scalar(@urls) < $links_count));
 # my @temp = splice (@urls, 0, $links_count); # lots of RAM wasted for the remaining urls
 
 my $start_time = time();
@@ -71,7 +93,7 @@ my $start_time = time();
 my @redirection = ('t.co', 'j.mp', 'is.gd', 'wp.me', 'bit.ly', 'goo.gl', 'xrl.us', 'ur1.ca', 'b1t.it', 'dlvr.it', 'ping.fm', 'post.ly', 'p.ost.im', 'on.fb.me', 'tinyurl.com', 'friendfeed.com');
 
 my $furl = Furl::HTTP->new(
-        agent   => 'Microblog-Explorer-0.1',
+        agent   => 'Microblog-Explorer/0.1',
         timeout => 5,
 	#headers => [ 'Accept-Encoding' => 'gzip' ],  # useless here
 );
@@ -79,9 +101,8 @@ my $furl = Furl::HTTP->new(
 my ($req, $res);
 my $ua = LWP::UserAgent->new;
 my $can_accept = HTTP::Message::decodable;
-$ua->agent("Microblog-Explorer-0.1");
+$ua->agent("Microblog-Explorer/0.1");
 $ua->timeout( 5 );
-
 
 
 ## Main loop
@@ -111,7 +132,14 @@ foreach my $url (@urls) {
 	my ($scheme, $auth, $path, $query, $frag) = uri_split($url);
 	next if ($auth !~ m/\./);
 	next if ($scheme =~ m/^ftp/);
-	my $finaluri = lc(uri_join($scheme, $auth));
+
+	if (defined $hostreduce) {
+		$finaluri = lc(uri_join($scheme, $auth));
+	}
+	else {
+		$finaluri = lc($url);
+	}
+
 	if (exists $hostnames{$finaluri}) {
 		next;
 	}
@@ -164,7 +192,7 @@ foreach my $url (@urls) {
 			$lang = $2;
 
 			# problems with encoding changes, these codes can also be bg, ja, ru, etc.
-			if ( ($lang eq "zh") || ($lang eq "qu") || ($lang eq "ps") || ($lang eq "la") ) { 
+			if ( ($lang eq "zh") || ($lang eq "qu") || ($lang eq "ps") || ($lang eq "la") || ($lang eq "lo") ) { 
 				$suspicious = 1;
 			}
 			elsif ( ($lang eq "el") && ($auth !~ m/\.gr$/) && ($confidence != 1) ) {
@@ -174,33 +202,50 @@ foreach my $url (@urls) {
 				$suspicious = 1;
 			}
 
+			my ($checkurl, $output);
 			if ($suspicious == 1) {
-				my $checkurl = lc($finaluri) . "\t" . $path . "\t" . $lang . "\t" . $confidence;
+				if (defined $hostreduce) {
+					$checkurl = lc($finaluri) . "\t" . lc($path) . "\t" . $lang . "\t" . $confidence;
+				}
+				else {
+					$checkurl = lc($finaluri) . "\t" . $lang . "\t" . $confidence;
+				}
 				push (@check_again, $checkurl);
 			}
 			else {
-			my $output = lc($finaluri) . "\t" . lc($path) . "\t" . $lang . "\t" . $confidence;
+				if (defined $hostreduce) {
+					$output = lc($finaluri) . "\t" . lc($path) . "\t" . $lang . "\t" . $confidence;
+				}
+				else {
+					$output = lc($finaluri) . "\t" . $lang . "\t" . $confidence;
+				}
 			print $out $output . "\n";
 			}
 		}
+		elsif ($code == 500) {
+			print "no langid server available\n";
+			exit;
+		}
 	}
-	if ($i == $links_count) {
-		last;
+	if (defined $links_count) {
+		if ($i == $links_count) {
+			last;
+		}
 	}
 }
 
 close($out);
 
 splice(@urls, 0, $stack);
-open (my $ltodo, '>', 'LINKS_TODO');
+open (my $ltodo, '>', $todo);
 print $ltodo join("\n", @urls);
 close($ltodo);
 
-open (my $check_again, '>>', 'LINKS_TO-CHECK');
+open (my $check_again, '>>', $tocheck);
 print $check_again join("\n", @check_again);
 close($check_again);
 
-print "urls: " . $links_count . "\n";
+print "urls: " . $stack . "\n";
 print "visited: " . $i . "\n";
 print "suspicious: " . scalar(@check_again) . "\n";
 my $end_time = time();
