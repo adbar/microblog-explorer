@@ -114,7 +114,6 @@ while toofar == 0:
 	match = next.search(htmlcode)
 	if match:
 		nextpage = match.group(1)
-		nextpage = nextpage.replace('&amp;','&')
 	else:
 		toofar = 1
 
