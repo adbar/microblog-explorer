@@ -22,9 +22,10 @@ options, args = parser.parse_args()
 
 if options.starter is None:
 	parser.error('No start URL given')
-match = re.match('^http://www.reddit.com/r/([A-Za-z0-9_-]+)/', options.starter)
+match = re.match('^http://www.reddit.com/r/([A-Za-z0-9_-]+)/?', options.starter)
 if match:
 	starter = match.group(1)
+	print "Starter:\t" + starter
 else:
 	sys.exit('The start URL does not seem to be valid')
 
@@ -39,25 +40,28 @@ intlinks = list()
 userlinks = list()
 
 # Select links
-imgre = re.compile(r'\.jpg$|\.jpeg$')
+redint = re.compile(r'^http://www.reddit.com')
+imgre = re.compile(r'\.jpg$|\.jpeg$|\.png')
 imguryout = re.compile(r'imgur\.com/|youtube\.com/|youtu\.be|google')
 reuser = re.compile(r'^http://www.reddit.com/user/([A-Za-z0-9_-]+)$')
 #notintern = re.compile(r'/help/|/message/')
 
 # Select next page
-nextbefore = re.compile(r'^http://www.reddit.com/r/' + re.escape(starter) + '/\?count=[0-9]+&amp;')
-next = re.compile(r'(http://www.reddit.com/r/' + re.escape(starter) + '/\?count=[0-9]+&amp;after=.+?)" rel="nofollow next"')
+nextbefore = re.compile(r'^http://www.reddit.com/r/' + starter + '/\?[0-9a-z=]+&amp;')
 
+next = re.compile(r'(http://www.reddit.com/r/' + starter + '/\?count=[0-9]+&amp;after=.+?)" rel="nofollow next"')
 
 ## Main loop
 while toofar == 0:
 
 	# Define request parameters
 	if initial == 1:
-		req = Request('http://www.reddit.com/r/' + re.escape(starter) + '/')
+		starter = starter.rstrip('/')
+		req = Request('http://www.reddit.com/r/' + starter + '/') # all links available
 		initial = 0
 	else:
 		time.sleep(3)
+		nextpage = nextpage.replace('&amp;','&')
 		print nextpage
 		req = Request(nextpage)
 
@@ -86,11 +90,15 @@ while toofar == 0:
 
 	# Find all interesting external links
 	for link in re.findall(r'<a class="title " href="(http://.+?)"', htmlcode):
-		match1 = imguryout.search(link)
-		if not match1:
-			match2 = imgre.search(link)
-			if not match2:
-				extlinks.append(link)
+		match = redint.match(link)
+		if match:
+			intlinks.append(link)
+		else:
+			match1 = imguryout.search(link)
+			if not match1:
+				match2 = imgre.search(link)
+				if not match2:
+					extlinks.append(link)
 
 	# Divide interesting internal links in 'users' and 'rest'
 	for link in re.findall(r'<a href="(http://.+?)"', htmlcode):
@@ -140,4 +148,3 @@ except IOError:
 for link in userlinks:
 	userout.write(link + "\n")
 userout.close()
-

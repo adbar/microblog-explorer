@@ -79,9 +79,7 @@ The langid.py server can be started as follows :
 
     python langid.py -s
 
-Usage : takes a number of links to analyze as argument
-
-Example (provided there is a list named `LINKS_TODO`) :
+Usage : takes a number of links to analyze as argument. Example (provided there is a list named `LINKS_TODO`) :
 
     perl fetch+lang-check.pl 200
 
