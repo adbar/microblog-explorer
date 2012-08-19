@@ -84,7 +84,7 @@ sub thread {
 	foreach my $intlink (@list) {
 		%seen = ();
 		{ no warnings 'uninitialized';
-		@internal = grep { ! $seen{ $_ }++ } @internal; # free some memory space
+			@internal = grep { ! $seen{ $_ }++ } @internal; # free some memory space
 		}
 		# timeline
 		my $page = fetch($intlink);
@@ -203,7 +203,7 @@ my $end_time = time();
 print "execution time: " . sprintf("%.2f\n", $end_time - $start_time);
 
 
-### SUBS
+### SUBROUTINES
 
 sub fetch {
 	my $path = shift;
@@ -241,7 +241,6 @@ sub extract {
 				if (defined $1) {
 					unless ( ($1 =~ m/gif|png|jpg|jpeg$/) || ($1 =~ m/^[0-9]/) ) {
 						my $temp = $1;
-						#$temp =~ s/\?utm_.*$//; # may not cover all the cases
 						# suppression of bad hostnames and eventual query parameters :
 						my ($scheme, $auth, $path, $query, $frag) = uri_split($temp);
 						{ no warnings 'uninitialized';
@@ -277,8 +276,9 @@ sub extract {
 				push (@int, $1) unless ( ($1 =~ m/^api/) || ($1 =~ m/^[^a-z]/) );
 			}
 		}
-	}} #end of unless
 	}
+	} # end of warnings
+	} # end of unless
 	return (\@ext, \@int);
 }
 

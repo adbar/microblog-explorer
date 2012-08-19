@@ -28,8 +28,8 @@ my $furl = Furl::HTTP->new(
 	headers => [ 'Accept-Encoding' => 'gzip' ], # may run into problems (error to catch)
 );
 
-my ($path, %hsp, @int_explore);
-my (@external, @internal, $errors, @errurls, $nreq, @daily_spare, @hourly_spare, %daily_spare) :shared;
+my ($path, %hsp, @int_explore, %daily_spare, @hourly_spare);
+my (@external, @internal, $errors, @errurls, $nreq) :shared;
 $errors = 0;
 $nreq = 0;
 
@@ -111,6 +111,7 @@ my $thrfour = threads->create(\&thread, @thr4);
 
 sub thread {
 	my @list = @_;
+	my (@daily_spare, @h_spare);
 	foreach my $intlink (@list) {
 		my $page = fetch($intlink);
 		my ($ext, $int) = extract($page);
@@ -118,27 +119,36 @@ sub thread {
 		push (@internal, @$int) if defined @$int;
 		## spare tags and users who don't tweet often
 		if ($intlink =~ m/^tag\//) {
-			(push @hourly_spare, $intlink);
+			(push @h_spare, $intlink);
 		}
 		if ($page =~ m/<dl class="entity_daily_notices">(.+?)<\/dl>/s) {
 			my $mean = $1;
 			$mean =~ m/<dd>([0-9]+)<\/dd>/;
 			$mean = $1;
 			if ($mean <= 5) {
-				$daily_spare{$intlink}++;
+				push (@daily_spare, $intlink);
 			}
 			if ( ($mean > 5) && ($mean <= 25) ) {
-				(push @hourly_spare, $intlink);
+				(push @h_spare, $intlink);
 			}
 		}
 		sleep ($sleepfactor);
 	}
+	return (\@daily_spare, \@h_spare);
 }
 
-$throne->join();
-$thrtwo->join();
-$thrthree->join();
-$thrfour->join();
+my ($ds, $hs) = $throne->join();
+@daily_spare{@$ds} = () if defined @$ds;
+push (@hourly_spare, @$hs) if defined @$hs;
+($ds, $hs) = $thrtwo->join();
+@daily_spare{@$ds} = () if defined @$ds;
+push (@hourly_spare, @$hs) if defined @$hs;
+($ds, $hs) = $thrthree->join();
+@daily_spare{@$ds} = () if defined @$ds;
+push (@hourly_spare, @$hs) if defined @$hs;
+($ds, $hs) = $thrfour->join();
+@daily_spare{@$ds} = () if defined @$ds;
+push (@hourly_spare, @$hs) if defined @$hs;
 
 print "requests:\t" . $nreq . "\n";
 print "errors:\t\t" . $errors . "\n";
@@ -167,27 +177,25 @@ open (my $errurls, '>>', 'errurls');
 print $errurls join("\n", @errurls);
 close($errurls);
 
+%seen = ();
+@hourly_spare = grep { ! $seen{ $_ }++ } @hourly_spare;
 open (my $hspare, '>', 'hourly_spare');
 print $hspare join("\n", @hourly_spare);
 close($hspare);
 
 open (my $dspare, '>', 'daily_spare');
-foreach my $k (keys %daily_spare) {
-	print $dspare $k . "\n";
-}
+print $dspare join("\n", keys %daily_spare);
 close($dspare);
 
 my $end_time = time();
 print "execution time: " . sprintf("%.2f\n", $end_time - $start_time);
 
 
-### SUBS
+### SUBROUTINES
 
 sub fetch {
 	my $path = shift;
-	if ($path !~ m/^\//) {
-		$path = "/" . $path;
-	}
+	$path =~ s/^\/+//;
 	my ($minor_version, $code, $msg, $headers, $body) = $furl->request(
 		method     => 'GET',
 		host       => 'identi.ca',
@@ -197,7 +205,8 @@ sub fetch {
 	unless ($msg eq "OK") {
 		$errors++;
 		$body = "ERR";
-		push (@errurls, $path);
+		my $buffer = $path . "\t" . $code . "\t" . $msg;
+		push (@errurls, $buffer);
 	}
 	$nreq++;
 	return $body;
@@ -217,7 +226,6 @@ sub extract {
 				if (defined $1) {
 					unless ( ($1 =~ m/gif|png|jpg|jpeg$/) || ($1 =~ m/^[0-9]/) ) {
 						my $temp = $1;
-						#$temp =~ s/\?utm_.*$//; # may not cover all the cases
 						# suppression of bad hostnames and eventual query parameters :
 						my ($scheme, $auth, $path, $query, $frag) = uri_split($temp);
 						{ no warnings 'uninitialized';
@@ -253,7 +261,8 @@ sub extract {
 				push (@int, $1) unless ( ($1 =~ m/^api/) || ($1 =~ m/^[^a-z]/) );
 			}
 		}
-	}} #end of unless
 	}
+	} # end of warnings
+	} # end of unless
 	return (\@ext, \@int);
 }
