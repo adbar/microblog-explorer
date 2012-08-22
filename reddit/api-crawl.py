@@ -23,19 +23,43 @@ from enchant.checker import SpellChecker # see package 'python-enchant' on Debia
 ## Parse arguments and options
 parser = optparse.OptionParser(usage='usage: %prog [options] arguments')
 parser.add_option("-s", "--starter", dest="starter", help="URL from where to start")
+parser.add_option("-l", "--language-code", dest="lcode", help="Language concerned")
 options, args = parser.parse_args()
 
 if options.starter is None:
-	parser.error('No start URL given')
-match = re.match('^http://www.reddit.com/r/([A-Za-z0-9/_-]+)', options.starter)
-if match:
-	starter = match.group(1)
-else:
-	match1 = re.match('^([A-Za-z0-9/_-]+)$', options.starter)
-	if match1:
-		starter = match1.group(1)
+	if options.lcode is None:
+		parser.error('No start URL and no start language given')
 	else:
-		sys.exit('The start URL does not seem to be valid')
+		lcodes = {
+		'cs': 'cesky',
+		'da': 'dkpol+denmark',
+		'de': 'de+deutschland+germany+austria+switzerland+piratenpartei+hamburg+berlin+frankfurt+munich+freiburg+wiesbaden+datenschutz+de_it+fragreddit+teutonik+germusic+germanyusa+GermanPractice+cologne+Dokumentationen+fernsehen+hoerbuecher+niedersachsen+schleswigholstein',
+		'es': 'redditores+espanol+programacion+peru+mexico+latinoamerica+es+colombia+chile+argentina+uruguay+ecuador+bolivia+paraguay+venezuela+Guatemala+elsalvador+Cinefilos+futbol+role+djangoes+practicar+videojuego',
+		'fi': 'suomi+EiOleLehti',
+		'fr': 'Quebec+france',
+		'it': 'italy',
+		'no': 'norge+ektenyheter+oslo',
+		'po': 'Polska',
+		'pt': 'portugal+brasil+BBrasil',
+		'ro': 'Romania+cluj+Timisoara'
+		}
+		if options.lcode in lcodes:
+    			starter = lcodes[options.lcode]
+		else:
+			print ('There is no source for this language code: ', options.lcode)
+			print ('Currently supported language codes: ', sorted(lcodes.keys()))
+			sys.exit()
+
+else:
+	match = re.match('^http://www.reddit.com/r/([A-Za-z0-9/_+-]+)', options.starter)
+	if match:
+		starter = match.group(1)
+	else:
+		match1 = re.match('^([A-Za-z0-9/_+-]+)$', options.starter)
+		if match1:
+			starter = match1.group(1)
+		else:
+			sys.exit('The start URL does not seem to be valid')
 
 
 ## Initialization
@@ -50,7 +74,7 @@ extlinks = list()
 userextlinks = list()
 intlinks = list()
 userlinks = list()
-rejected = list()
+suspicious = list()
 temp1 = list()
 temp2 = list()
 temp3 = list()
@@ -62,7 +86,7 @@ langcheck = 0
 
 # Select links
 redint = re.compile(r'^http://www.reddit.com')
-imgre = re.compile(r'\.jpg$|\.jpeg$|\.png')
+mediare = re.compile(r'\.jpg$|\.JPG$|\.jpeg$|\.png$|\.gif$|\.ogg$|\.mp3$|\.avi$|\.mp4$')
 imguryout = re.compile(r'imgur\.com/|youtube\.com/|youtu\.be|google')
 reuser = re.compile(r'^http://www.reddit.com/user/([A-Za-z0-9_-]+)$')
 notintern = re.compile(r'/help/|/message/|/comments/')
@@ -117,13 +141,13 @@ def findext(code):
 	for link in re.findall(r'"url": "(http://.+?)",', code):
 		match = redint.match(link)
 		if match:
-			match1 = notintern.match(link)
+			match1 = notintern.search(link)
 			if not match1:
 				intl.append(link)
 		else:
 			match1 = imguryout.search(link)
 			if not match1:
-				match2 = imgre.search(link)
+				match2 = mediare.search(link)
 				if not match2:
 					if langcheck == 1:
 						# Check spelling to see if the link text is in English
@@ -133,7 +157,7 @@ def findext(code):
 						for err in spellcheck:
 							errcount += 1
 						try:
-							if ( (errcount/wordcount) > 0.5):
+							if ( (errcount/wordcount) > 0.33):
 								extl.append(link)
 							else:
 								rejl.append(link)
@@ -165,7 +189,7 @@ while toofar < 5:
 	(temp1, temp2, temp3) = findext(jsoncode)
 	extlinks.extend(temp1)
 	intlinks.extend(temp2)
-	rejected.extend(temp3)
+	suspicious.extend(temp3)
 
 	# Find all users
 	for link in re.findall(r'"author": "([A-Za-z0-9_-]+)",', jsoncode):
@@ -213,7 +237,7 @@ for userid in userlinks:
 		(temp1, temp2, temp3) = findext(jsoncode)
 		userextlinks.extend(temp1)
 		intlinks.extend(temp2)
-		rejected.extend(temp3)
+		suspicious.extend(temp3)
 
 		# Find the next page
 		ids = re.findall(r'"id": "([a-z0-9]+)",', jsoncode)
@@ -230,25 +254,30 @@ for userid in userlinks:
 
 
 extlinks = list(set(extlinks))
-userextlinks = list(set(userextlinks))
-intlinks = list(set(intlinks))
+print ('Links found on the subreddit page:\t', len(extlinks))
 userlinks = list(set(userlinks))
-rejected = list(set(rejected))
-
+print ('Users found:\t\t\t\t', len(intlinks))
+userextlinks = list(set(userextlinks))
+print ('Links found on user pages:\t\t', len(userextlinks))
+intlinks = list(set(intlinks))
+print ('Internal links:\t', len(intlinks))
+suspicious = list(set(suspicious))
+print ('Suspicious links (probably English):\t', len(suspicious))
 
 # Save lists to files
 
 def writefile(filename, listname):
+	filename = options.lcode + '_' + filename
 	try:
-		out = open(filename, 'w')
+		out = open(filename, 'a')
 	except IOError:
 		sys.exit ("could not open output file")
 	for link in listname:
 		out.write(link + "\n")
 	out.close()
 
-writefile('external-json', extlinks)
-writefile('extuserslinks-json', userextlinks)
-writefile('users-json', userlinks)
-writefile('internal-json', intlinks)
-writefile('rejected-json', rejected)
+writefile('external', extlinks)
+writefile('extuserslinks', userextlinks)
+writefile('users', userlinks)
+writefile('internal', intlinks)
+writefile('suspicious', suspicious)

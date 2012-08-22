@@ -57,12 +57,21 @@ The Bash script deletes duplicates, it can be run before an export of the data o
 Reddit
 ------
 
-This crawler gathers (nearly) all external and internal links for a given reddit page. It is still experimental. 
+This crawler gathers (nearly) all external and internal links starting from a given reddit page, a multi-reddit expression or a given language code (which is a pre-compiled multi-reddit).
 
-Example :
+All the functions described here are featured by the API version which gets shorter pages (in JSON format) with 100 links instead of 25. It is thus much faster and it is recommended, the older HTML-based one remains in case the API rules change.
+
+Target languages available so far : Czech, Danish, German, Spanish, Finnish, French, Italian, Norse, Polish, Portuguese and Romanian.
+
+Using the spell-checker provided by the python-enchant package, the script discriminates between links whose titles are mostly English and others which are bound to be in the target language. Tests show that the probability to find urls that lead to English text is indeed much higher concerning the 'suspicious' list.
+
+Usage examples :
 
 	python reddit-crawl.py --starter http://www.reddit.com/r/Polska/
+	python reddit-crawl.py -s Polska		# the same, shorter
 
+	python reddit-crawl.py -l dkpol+denmark		# using a multi-reddit expression
+	python reddit-crawl.py -l da			# the same, using a language code
 
 
 Language identification

@@ -12,7 +12,6 @@
 use strict;
 use warnings;
 use Getopt::Long;
-use open ':encoding(utf8)';
 use Encode qw(encode);
 require Compress::Zlib;
 use base 'HTTP::Message';
@@ -45,7 +44,7 @@ sub usage {
 }
 
 
-my (@urls, @done, %links_done, %hostnames, $finaluri, $clean_text, $confidence, $lang, $suspicious, @check_again, @output);
+my (@urls, @done, %links_done, %hostnames, $finaluri, $clean_text, $confidence, $lang, $suspicious, @check_again, @output, $join);
 
 my $todo = 'LINKS-TODO';
 my $done = 'RESULTS-langid';
@@ -62,8 +61,14 @@ if (-e $done) {
 	while (<$ldone>) {
 		chomp;
 		my @temp = split ("\t", $_);
-		$hostnames{$temp[0]}++;
-		my $join = $temp[0] . $temp[1];
+		if (scalar (@temp) == 3) {
+			$hostnames{$temp[0]}++;
+			$join = $temp[0];
+		}
+		elsif (scalar (@temp) == 4) {
+			$hostnames{$temp[0]}++;
+			$join = $temp[0] . $temp[1];
+		}
 		$links_done{$join}++;
 	}
 	close($ldone);
@@ -73,8 +78,11 @@ if (-e $todo) {
 	open (my $ltodo, '<', $todo);
 	while (<$ltodo>) {
 		chomp($_);
+		# Filters
 		unless (exists $links_done{$_}) {
-			push (@urls, $_);	
+			unless ( ($_ =~ m/\.ogg$|\.mp3$|\.avi$|\.mp4$/) || ($_ =~ m/\.jpg$|\.JPG$|\.jpeg$|\.png$|\.gif$/) ) {
+				push (@urls, $_);
+			}
 		}
 	}
 	close($ltodo);
@@ -109,6 +117,7 @@ $ua->timeout( 5 );
 my $i = 0;
 my $stack = 0;
 open (my $out, '>>', $done);
+open (my $check_again, '>>', $tocheck);
 
 foreach my $url (@urls) {
 	$stack++;
@@ -137,7 +146,7 @@ foreach my $url (@urls) {
 		$finaluri = lc(uri_join($scheme, $auth));
 	}
 	else {
-		$finaluri = lc($url);
+		$finaluri = lc(uri_join($scheme, $auth, $path));
 	}
 
 	if (exists $hostnames{$finaluri}) {
@@ -162,7 +171,6 @@ foreach my $url (@urls) {
 		$i++;
 
 		{ no warnings 'uninitialized';
-			#my $body = $furl->get($finaluri);
 			next if (length($body) < 100); # could be another value 
 			my $h = new HTML::Clean(\$body);
 			$h->strip();
@@ -173,26 +181,47 @@ foreach my $url (@urls) {
 			$hs->eof;
 
 			next if (length($clean_text) < 100); # could also be another value
-			$clean_text = encode('UTF-8', $clean_text);
 		}
-		### WIDESTRING ERROR if no re-encoding, but re-encoding may break langid
 
-
-	my ( $minor_version, $code, $msg, $headers, $res ) = $furl->request(
-		method  => 'PUT',
-		host    => '*.*.*.*', # please fill this out
-		port    => 9008,
-		path_query => 'detect',
-		content	=> $clean_text,
-	);
-	if ($code == 200) {
+		# Furl alternative
+		my ( $minor_version, $code, $msg, $headers, $res );
+		eval { # WIDESTRING ERROR if no re-encoding, but re-encoding may break langid
+			( $minor_version, $code, $msg, $headers, $res ) = $furl->request(
+				method  => 'PUT',
+				host    => '78.46.186.58',
+				port    => 9008,
+				path_query => 'detect',
+				content	=> $clean_text,
+			);
+		};
+		if ($@) {
+			print "An error occurred ($@), continuing\n";
+			$clean_text = encode('UTF-8', $clean_text);
+			eval {
+				( $minor_version, $code, $msg, $headers, $res ) = $furl->request(
+					method  => 'PUT',
+					host    => '78.46.186.58',
+					port    => 9008,
+					path_query => 'detect',
+					content	=> $clean_text,
+				);
+			};
+			if ($@) {
+				print "ERROR: $@" . "url: " . $finaluri;
+				next;
+			}
+		}
+		if ($code == 200) {
 			$suspicious = 0;
 			$res =~ m/"confidence": (.+?), "language": "([a-z]+?)"/;
 			$confidence = $1;
 			$lang = $2;
 
 			# problems with encoding changes, these codes can also be bg, ja, ru, etc.
-			if ( ($lang eq "zh") || ($lang eq "qu") || ($lang eq "ps") || ($lang eq "la") || ($lang eq "lo") ) { 
+			if ($confidence < 0.5) {
+				$suspicious = 1;
+			}
+			elsif ( ($lang eq "zh") || ($lang eq "qu") || ($lang eq "ps") || ($lang eq "la") || ($lang eq "lo") || ($lang eq "an") ) { 
 				$suspicious = 1;
 			}
 			elsif ( ($lang eq "el") && ($auth !~ m/\.gr$/) && ($confidence != 1) ) {
@@ -210,7 +239,7 @@ foreach my $url (@urls) {
 				else {
 					$checkurl = lc($finaluri) . "\t" . $lang . "\t" . $confidence;
 				}
-				push (@check_again, $checkurl);
+				print $check_again $checkurl . "\n";
 			}
 			else {
 				if (defined $hostreduce) {
@@ -219,7 +248,7 @@ foreach my $url (@urls) {
 				else {
 					$output = lc($finaluri) . "\t" . $lang . "\t" . $confidence;
 				}
-			print $out $output . "\n";
+				print $out $output . "\n";
 			}
 		}
 		elsif ($code == 500) {
@@ -235,15 +264,12 @@ foreach my $url (@urls) {
 }
 
 close($out);
+close($check_again);
 
 splice(@urls, 0, $stack);
 open (my $ltodo, '>', $todo);
 print $ltodo join("\n", @urls);
 close($ltodo);
-
-open (my $check_again, '>>', $tocheck);
-print $check_again join("\n", @check_again);
-close($check_again);
 
 print "urls: " . $stack . "\n";
 print "visited: " . $i . "\n";
