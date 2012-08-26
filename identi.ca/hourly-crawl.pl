@@ -91,6 +91,10 @@ foreach my $link (@internal) {
 	#}
 }
 
+if (scalar(@int_explore) > 200) {
+	$sleepfactor = 1.5;
+}
+
 ## internal links
 print "index int:\t" . scalar (@internal) . "\n";
 print "int explore:\t" . scalar (@int_explore) . "\n";
@@ -140,12 +144,15 @@ sub thread {
 my ($ds, $hs) = $throne->join();
 @daily_spare{@$ds} = () if defined @$ds;
 push (@hourly_spare, @$hs) if defined @$hs;
+
 ($ds, $hs) = $thrtwo->join();
 @daily_spare{@$ds} = () if defined @$ds;
 push (@hourly_spare, @$hs) if defined @$hs;
+
 ($ds, $hs) = $thrthree->join();
 @daily_spare{@$ds} = () if defined @$ds;
 push (@hourly_spare, @$hs) if defined @$hs;
+
 ($ds, $hs) = $thrfour->join();
 @daily_spare{@$ds} = () if defined @$ds;
 push (@hourly_spare, @$hs) if defined @$hs;
@@ -224,7 +231,9 @@ sub extract {
 			if ( ($link =~ m/rel="nofollow external">/) || ($link =~ m/rel="external">/) ) {
 				$link =~ m/title="(.+?)"/;
 				if (defined $1) {
-					unless ( ($1 =~ m/gif|png|jpg|jpeg$/) || ($1 =~ m/^[0-9]/) ) {
+					unless ($1 =~ m/^[0-9]/) {
+					unless ($1 =~ m/\.jpg$|\.JPG$|\.jpeg$|\.png$|\.gif$|\.pdf$/) {
+					unless ($1 =~ m/\.ogg$|\.mp3$|\.avi$|\.mp4$/) {
 						my $temp = $1;
 						# suppression of bad hostnames and eventual query parameters :
 						my ($scheme, $auth, $path, $query, $frag) = uri_split($temp);
@@ -234,7 +243,7 @@ sub extract {
 						}
 						$temp = lc($temp);
 						push (@ext, $temp);
-					}
+					}}}
 				}
 			}
 		}

@@ -239,7 +239,9 @@ sub extract {
 			if ( ($link =~ m/rel="nofollow external">/) || ($link =~ m/rel="external">/) ) {
 				$link =~ m/title="(.+?)"/;
 				if (defined $1) {
-					unless ( ($1 =~ m/gif|png|jpg|jpeg$/) || ($1 =~ m/^[0-9]/) ) {
+					unless ($1 =~ m/^[0-9]/) {
+					unless ($1 =~ m/\.jpg$|\.JPG$|\.jpeg$|\.png$|\.gif$|\.pdf$/) {
+					unless ($1 =~ m/\.ogg$|\.mp3$|\.avi$|\.mp4$/) {
 						my $temp = $1;
 						# suppression of bad hostnames and eventual query parameters :
 						my ($scheme, $auth, $path, $query, $frag) = uri_split($temp);
@@ -249,7 +251,7 @@ sub extract {
 						}
 						$temp = lc($temp);
 						push (@ext, $temp);
-					}
+					}}}
 				}
 			}
 		}

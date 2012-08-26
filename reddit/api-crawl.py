@@ -86,7 +86,7 @@ langcheck = 0
 
 # Select links
 redint = re.compile(r'^http://www.reddit.com')
-mediare = re.compile(r'\.jpg$|\.JPG$|\.jpeg$|\.png$|\.gif$|\.ogg$|\.mp3$|\.avi$|\.mp4$')
+mediare = re.compile(r'\.jpg$|\.JPG$|\.jpeg$|\.png$|\.gif$|\.pdf$|\.ogg$|\.mp3$|\.avi$|\.mp4$')
 imguryout = re.compile(r'imgur\.com/|youtube\.com/|youtu\.be|google')
 reuser = re.compile(r'^http://www.reddit.com/user/([A-Za-z0-9_-]+)$')
 notintern = re.compile(r'/help/|/message/|/comments/')
