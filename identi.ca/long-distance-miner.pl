@@ -8,23 +8,25 @@
 
 use strict;
 use warnings;
-use Furl; # supposed to be faster, must be installed through CPAN
-require Compress::Zlib; # faster file transmission
 # use utf8; use open ':encoding(utf8)'; doesn't seem to be necessary here
-use URI::Split qw(uri_split uri_join);
 use threads;
 use threads::shared;
 use Time::HiRes qw( time sleep );
+use Reddit_Fetch_Extract qw( fetch extract );
 
-
+## Expects a number as argument
 die 'Usage: perl XX.pl [number of links to scan]' if (scalar (@ARGV) != 1);
 my $ucount = $ARGV[0];
+
+## Change the time between two pages in the same thread here
 my $sleepfactor = 3;
+# 5 sec timeout by default
+
+my $depthlimit = 20; # 100 was too much
 
 my ($path, @users, %users_done);
-my (@ushared, @external, @internal, @done, $seen_users, $errors, $nreq, @errurls) :shared;
+my (@ushared, @external, @internal, @done, $seen_users, $nreq, @errurls) :shared;
 $seen_users = 0;
-$errors = 0;
 $nreq = 0;
 
 my $userslist = 'USERS_TODO';
@@ -55,15 +57,14 @@ else {
 
 my $start_time = time();
 
-my $furl = Furl::HTTP->new(
-        agent   => 'Microblog-Explorer-0.1',
-        timeout => 6,
-	headers => [ 'Accept-Encoding' => 'gzip' ], # may run into problems (error to catch)
-);
-
-my %seen = ();
+my (%seen, @temp);
 @users = grep { ! $seen{ $_ }++ } @users;
-my @temp = splice (@users, 0, $ucount);
+if ($ucount < scalar(@users)) {
+	@temp = splice (@users, 0, $ucount);
+}
+else {
+	@temp = @users;
+}
 
 my $divide = int(scalar(@temp)/4);
 my @thr1 = splice (@temp, 0, $divide);
@@ -86,8 +87,15 @@ sub thread {
 		{ no warnings 'uninitialized';
 			@internal = grep { ! $seen{ $_ }++ } @internal; # free some memory space
 		}
-		# timeline
-		my $page = fetch($intlink);
+		# fetch page
+		my ($code, $msg, $page) = fetch($intlink);
+		$nreq++;
+		unless ($msg eq "OK") {
+			my $buffer = $intlink . "\t" . $code . "\t" . $msg;
+			push (@errurls, $buffer);
+			next;
+		}
+		# process timeline
 		my ($ext, $int) = extract($page);
 		push (@external, @$ext) if defined @$ext;
 		push (@internal, @$int) if defined @$int;
@@ -96,13 +104,12 @@ sub thread {
 			$max =~ m/<dd>([0-9]+)<\/dd>/;
 			$max = int($1/20);
 			$max++;
-			if ($max > 20) { # 100 was too much
-				$max = 20;
-			}
+			$max = $depthlimit if ($max > $depthlimit);
 			unless ($max == 1) {
+				my $htmlerr = 0;
 				for (my $n = 2; $n <= $max; $n++) {
-					my $htmlerr = 0;
 					$page = fetch($intlink . "?page=" . $n);
+					$nreq++;
 					$htmlerr++ if ($page eq "ERR");
 					last if $htmlerr > 3;
 					($ext, $int) = extract($page);
@@ -118,38 +125,16 @@ sub thread {
 			$seen_users += $1;
 			my $max = int($1/20);
 			$max++;
-			if ($max > 20) { # 100 was too much
-				$max = 20;
-			}
-			for (my $n = 1; $n <= $max; $n++) {
-				my $htmlerr = 0;
-				my $suscr = fetch($intlink . "/subscriptions?page=" . $n);
-				$htmlerr++ if ($page eq "ERR");
-				last if $htmlerr > 3;
-				($ext, $int) = extract_users($suscr);
-				push (@external, @$ext) if defined @$ext;
-				push (@ushared, @$int) if defined @$int;
-				sleep($sleepfactor);
-			}
+			$max = $depthlimit if ($max > $depthlimit);
+			&follow_expl($intlink, "/subscriptions?page=", $max);
 		}
 		#followers
 		if ($page =~ m/<a href="http:\/\/identi.ca\/[A-Za-z0-9]+?\/subscribers" class="">[A-Za-z]+?<\/a>.+?([0-9]+?)<\/h2>/s) {
 			$seen_users += $1;
 			my $max = int($1/20);
 			$max++;
-			if ($max > 20) { # 100 was too much
-				$max = 20;
-			}
-			for (my $n = 1; $n <= $max; $n++) {
-				my $htmlerr = 0;
-				my $suscr = fetch($intlink . "/subscribers?page=" . $n);
-				$htmlerr++ if ($page eq "ERR");
-				last if $htmlerr > 3;
-				($ext, $int) = extract_users($suscr);
-				push (@external, @$ext) if defined @$ext;
-				push (@ushared, @$int) if defined @$int;
-				sleep($sleepfactor);
-			}
+			$max = $depthlimit if ($max > $depthlimit);
+			&follow_expl($intlink, "/subscribers?page=", $max);
 		}
 	}
 }
@@ -161,21 +146,22 @@ $thrfour->join();
 
 print "requests:\t" . $nreq . "\n";
 print "seen users:\t" . $seen_users . "\n";
-print "errors:\t\t" . $errors . "\n";
+print "errors:\t\t" . scalar(@errurls) . "\n";
 my $inttotal = scalar (@internal);
 my $exttotal = scalar (@external);
+
 
 ### CLEANING AND WRITEDOWN
 # fast removal of duplicates
 %seen = ();
 @external = grep { ! $seen{ $_ }++ } @external;
 %seen = ();
-@internal = grep { ! $seen{ $_ }++ } @internal;
+@internal = grep { ! $seen{ $_ }++ } @internal; # uninitialized problem : empty internal list ?
 my @users_todo = (@users, @ushared);
 %seen = ();
 @users_todo = grep { ! $seen{ $_ }++ } @users_todo;
 
-print "total int:\t" . scalar (@internal) . "\n";
+print "total int:\t" . scalar (@internal) . "\n"; # uninitialized problem : empty internal list ?
 print "total ext:\t" . scalar (@external) . "\t(uniqueness ratio: " . sprintf("%.1f", $exttotal/scalar (@external)) . ")\n";
 
 open (my $resultint, '>>', 'ld-int');
@@ -205,83 +191,24 @@ print "execution time: " . sprintf("%.2f\n", $end_time - $start_time);
 
 ### SUBROUTINES
 
-sub fetch {
-	my $path = shift;
-	#if ($path !~ m/^\//) {
-	#	$path = "/" . $path;
-	#}
-	$path =~ s/^\/+//;
-	my ($minor_version, $code, $msg, $headers, $body) = $furl->request(
-		method     => 'GET',
-		host       => 'identi.ca',
-		port       => 80,
-		path_query => $path
-	);
-	unless ($msg eq "OK") {
-		$errors++;
-		$body = "ERR";
-		my $buffer = $path . "\t" . $code . "\t" . $msg;
-		push (@errurls, $buffer);
-	}
-	$nreq++;
-	return $body;
-}
-
-sub extract {
-	my $html = shift;
-	my (@ext, @int);
-	unless ($html eq "ERR") {
-	## EXTERNAL LINKS
-	my @links = split ("<a href=\"", $html);
-	splice (@links, 0, 1);
-	foreach my $link (@links) {
-		unless ($link =~ m/http:\/\/www.geonames.org\//) {
-			if ( ($link =~ m/rel="nofollow external">/) || ($link =~ m/rel="external">/) ) {
-				$link =~ m/title="(.+?)"/;
-				if (defined $1) {
-					unless ($1 =~ m/^[0-9]/) {
-					unless ($1 =~ m/\.jpg$|\.JPG$|\.jpeg$|\.png$|\.gif$|\.pdf$/) {
-					unless ($1 =~ m/\.ogg$|\.mp3$|\.avi$|\.mp4$/) {
-						my $temp = $1;
-						# suppression of bad hostnames and eventual query parameters :
-						my ($scheme, $auth, $path, $query, $frag) = uri_split($temp);
-						{ no warnings 'uninitialized';
-							next if (length($auth) < 5);
-							$temp = uri_join($scheme, $auth, $path);
-						}
-						$temp = lc($temp);
-						push (@ext, $temp);
-					}}}
-				}
-			}
+sub follow_expl {
+	my ($link, $append, $max) = @_;
+	my $htmlerr = 0;
+	for (my $n = 1; $n <= $max; $n++) {
+		my $address = $link . $append . $n;
+		my ($code, $msg, $page) = fetch($address);
+		$nreq++;
+		unless ($msg eq "OK") {
+			my $buffer = $link . "\t" . $code . "\t" . $msg;
+			push (@errurls, $buffer);
+			$htmlerr++;
 		}
+		last if $htmlerr > 3;
+		my ($ext, $int) = extract_users($address);
+		push (@external, @$ext) if defined @$ext;
+		push (@ushared, @$int) if defined @$int;
+		sleep($sleepfactor);
 	}
-
-	## INTERNAL LINKS
-	# ids, groups
-	@links = split ("<span class=\"vcard", $html);
-	splice (@links, 0, 1);
-	foreach my $link (@links) {
-		if ($link =~ m/<a href="http:\/\/identi.ca\/(.+?)"/) {
-			if (defined $1) {
-				push (@int, $1) unless ( ($1 =~ m/^attachment|conversation|favorited|featured|api/) || ($1 =~ m/^[^a-z]/) );
-			}
-		}
-	}
-	# tags
-	{ no warnings 'uninitialized';
-	@links = split ("<span class=\"tag\">", $html);
-	splice (@links, 0, 1);
-	foreach my $link (@links) {
-		if ($link =~ m/<a href="http:\/\/identi.ca\/(.+?)"/) {
-			if (defined $1) {
-				push (@int, $1) unless ( ($1 =~ m/^api/) || ($1 =~ m/^[^a-z]/) );
-			}
-		}
-	}
-	} # end of warnings
-	} # end of unless
-	return (\@ext, \@int);
 }
 
 sub extract_users {

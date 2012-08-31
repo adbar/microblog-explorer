@@ -6,7 +6,18 @@
 ###	The Microblog-Explorer is freely available under the GNU GPL v3 license (http://www.gnu.org/licenses/gpl.html).
 
 
-sort result-ext | uniq > r-ext2
-sort result-int | uniq > r-int2
-mv r-ext2 result-ext
-mv r-int2 result-int
+tempfile() {
+    tempprefix=$(basename "$0")
+    mktemp /tmp/${tempprefix}.XXXXXX
+}
+
+TMP1=$(tempfile)
+TMP2=$(tempfile)
+
+trap 'rm -f $TMP1' EXIT
+trap 'rm -f $TMP2' EXIT
+
+sort result-ext | uniq > $TMP1
+sort result-int | uniq > $TMP2
+mv $TMP1 result-ext
+mv $TMP2 result-int

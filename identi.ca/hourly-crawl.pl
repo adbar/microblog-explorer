@@ -8,35 +8,30 @@
 
 use strict;
 use warnings;
-use Furl; # supposed to be faster, must be installed through CPAN
-require Compress::Zlib; # faster file transmission
 # use utf8; use open ':encoding(utf8)'; doesn't seem to be necessary here
-use URI::Split qw(uri_split uri_join);
 use threads;
 use threads::shared;
 use Time::HiRes qw( time sleep );
+use Cwd;
+my $directory = cwd;
+use lib $directory;
+use Reddit_Fetch_Extract qw( fetch extract );
+
 
 my $start_time = time();
 
+## Change the time between two pages in the same thread here
 my $sleepfactor = 0.5;
-
-# -> problems with timeout
-
-my $furl = Furl::HTTP->new(
-        agent   => 'Microblog-Explorer-0.1',
-        timeout => 5,
-	headers => [ 'Accept-Encoding' => 'gzip' ], # may run into problems (error to catch)
-);
+# 5 sec timeout by default
 
 my ($path, %hsp, @int_explore, %daily_spare, @hourly_spare);
-my (@external, @internal, $errors, @errurls, $nreq) :shared;
-$errors = 0;
+my (@external, @internal, @errurls, $nreq) :shared;
 $nreq = 0;
 
 ## load spare lists
 
-my $hsplist = 'hourly_spare';
-my $dsplist = 'daily_spare';
+my $hsplist = $directory . '/hourly_spare';
+my $dsplist = $directory . '/daily_spare';
 
 if (-e $hsplist) {
 	open (my $hsp, '<', $hsplist);
@@ -65,7 +60,13 @@ sub indexthr {
 	my @list = @_;
 	for (my $n = $list[0]; $n <= $list[1]; $n++) {
 		$path = "/?page=" . $n;
-		my $page = fetch($path);
+		my ($code, $msg, $page) = fetch($path);
+		$nreq++;
+		unless ($msg eq "OK") {
+			my $buffer = $path . "\t" . $code . "\t" . $msg;
+			push (@errurls, $buffer);
+			next;
+		}
 		my ($ext, $int) = extract($page);
 		push (@external, @$ext);
 		push (@internal, @$int);
@@ -92,7 +93,7 @@ foreach my $link (@internal) {
 }
 
 if (scalar(@int_explore) > 200) {
-	$sleepfactor = 1.5;
+	$sleepfactor *= 3;
 }
 
 ## internal links
@@ -117,7 +118,14 @@ sub thread {
 	my @list = @_;
 	my (@daily_spare, @h_spare);
 	foreach my $intlink (@list) {
-		my $page = fetch($intlink);
+		# fetch page
+		my ($code, $msg, $page) = fetch($intlink);
+		$nreq++;
+		unless ($msg eq "OK") {
+			my $buffer = $intlink . "\t" . $code . "\t" . $msg;
+			push (@errurls, $buffer);
+			next;
+		}
 		my ($ext, $int) = extract($page);
 		push (@external, @$ext) if defined @$ext;
 		push (@internal, @$int) if defined @$int;
@@ -158,7 +166,7 @@ push (@hourly_spare, @$hs) if defined @$hs;
 push (@hourly_spare, @$hs) if defined @$hs;
 
 print "requests:\t" . $nreq . "\n";
-print "errors:\t\t" . $errors . "\n";
+print "errors:\t\t" . scalar(@errurls) . "\n";
 my $inttotal = scalar (@internal);
 my $exttotal = scalar (@external);
 
@@ -172,106 +180,28 @@ my $exttotal = scalar (@external);
 print "total int:\t" . scalar (@internal) . "\t(uniqueness ratio: " . sprintf("%.1f", $inttotal/scalar (@internal)) . ")\n";
 print "total ext:\t" . scalar (@external) . "\t(uniqueness ratio: " . sprintf("%.1f", $exttotal/scalar (@external)) . ")\n";
 
-open (my $resultint, '>>', 'result-int');
+# write down the files
+open (my $resultint, '>>', $directory . '/result-int');
 print $resultint join("\n", @internal);
 close($resultint);
 
-open (my $resultext, '>>', 'result-ext');
+open (my $resultext, '>>', $directory . '/result-ext');
 print $resultext join("\n", @external);
 close($resultext);
 
-open (my $errurls, '>>', 'errurls');
+open (my $errurls, '>>', $directory . '/errurls');
 print $errurls join("\n", @errurls);
 close($errurls);
 
 %seen = ();
 @hourly_spare = grep { ! $seen{ $_ }++ } @hourly_spare;
-open (my $hspare, '>', 'hourly_spare');
+open (my $hspare, '>', $directory . '/hourly_spare');
 print $hspare join("\n", @hourly_spare);
 close($hspare);
 
-open (my $dspare, '>', 'daily_spare');
+open (my $dspare, '>', $directory . '/daily_spare');
 print $dspare join("\n", keys %daily_spare);
 close($dspare);
 
 my $end_time = time();
 print "execution time: " . sprintf("%.2f\n", $end_time - $start_time);
-
-
-### SUBROUTINES
-
-sub fetch {
-	my $path = shift;
-	$path =~ s/^\/+//;
-	my ($minor_version, $code, $msg, $headers, $body) = $furl->request(
-		method     => 'GET',
-		host       => 'identi.ca',
-		port       => 80,
-		path_query => $path
-	);
-	unless ($msg eq "OK") {
-		$errors++;
-		$body = "ERR";
-		my $buffer = $path . "\t" . $code . "\t" . $msg;
-		push (@errurls, $buffer);
-	}
-	$nreq++;
-	return $body;
-}
-
-sub extract {
-	my $html = shift;
-	my (@ext, @int);
-	unless ($html eq "ERR") {
-	## EXTERNAL LINKS
-	my @links = split ("<a href=\"", $html);
-	splice (@links, 0, 1);
-	foreach my $link (@links) {
-		unless ($link =~ m/http:\/\/www.geonames.org\//) {
-			if ( ($link =~ m/rel="nofollow external">/) || ($link =~ m/rel="external">/) ) {
-				$link =~ m/title="(.+?)"/;
-				if (defined $1) {
-					unless ($1 =~ m/^[0-9]/) {
-					unless ($1 =~ m/\.jpg$|\.JPG$|\.jpeg$|\.png$|\.gif$|\.pdf$/) {
-					unless ($1 =~ m/\.ogg$|\.mp3$|\.avi$|\.mp4$/) {
-						my $temp = $1;
-						# suppression of bad hostnames and eventual query parameters :
-						my ($scheme, $auth, $path, $query, $frag) = uri_split($temp);
-						{ no warnings 'uninitialized';
-							next if (length($auth) < 5);
-							$temp = uri_join($scheme, $auth, $path);
-						}
-						$temp = lc($temp);
-						push (@ext, $temp);
-					}}}
-				}
-			}
-		}
-	}
-
-	## INTERNAL LINKS
-	# ids, groups
-	@links = split ("<span class=\"vcard", $html);
-	splice (@links, 0, 1);
-	foreach my $link (@links) {
-		if ($link =~ m/<a href="http:\/\/identi.ca\/(.+?)"/) {
-			if (defined $1) {
-				push (@int, $1) unless ( ($1 =~ m/^attachment|conversation|favorited|featured|api/) || ($1 =~ m/^[^a-z]/) );
-			}
-		}
-	}
-	# tags
-	{ no warnings 'uninitialized';
-	@links = split ("<span class=\"tag\">", $html);
-	splice (@links, 0, 1);
-	foreach my $link (@links) {
-		if ($link =~ m/<a href="http:\/\/identi.ca\/(.+?)"/) {
-			if (defined $1) {
-				push (@int, $1) unless ( ($1 =~ m/^api/) || ($1 =~ m/^[^a-z]/) );
-			}
-		}
-	}
-	} # end of warnings
-	} # end of unless
-	return (\@ext, \@int);
-}
