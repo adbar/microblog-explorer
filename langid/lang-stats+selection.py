@@ -29,19 +29,20 @@ parser.add_option("-o", "--output-file", dest="outputfile",
 options, args = parser.parse_args()
 
 if options.inputfile is None:
-	parser.error('No input file given')
+	parser.error('No input file given (-h or --help for more information)')
 
-## Initialize
+## Initialize the dictionaries to fill
 langd = defaultdict(int)
 urld = defaultdict(int)
 intd = defaultdict(int)
 codes = dict()
 
+# Load the language codes dictionary
 try:
 	langfile = open('ISO_639-1_codes', 'r')
 except IOError:
 	sys.exit("could not open the file containing the language codes")
-# adapted from this source : https://gist.github.com/1262033
+## adapted from this source : https://gist.github.com/1262033
 for line in langfile:
 	columns = line.split(' ')
 	codes[columns[0].strip("':")] = columns[1].strip("',\n")
@@ -56,9 +57,10 @@ try:
 except IOError:
 	sys.exit("could not open input file")
 
-## Parse input file
+# Parse the input file
 for line in f:
 	columns = line.split('\t')
+	## two possibilities due to the 'hr' option of the Perl script in the same directory
 	if len(columns) == 3 or len(columns) == 4:
 		if len(columns) == 3:
 			marker = 1
@@ -73,7 +75,7 @@ for line in f:
 f.close()
 
 
-## Display and print the results
+# Display and print the results
 print (len(urld), 'total unique urls')
 print ('-Language-\t', '-Code-', '-Docs-', '-%-', sep='\t')
 for l in sorted(langd, key=langd.get, reverse=True):
@@ -88,6 +90,7 @@ for l in sorted(langd, key=langd.get, reverse=True):
 	pcent = (langd[l] / len(urld))*100
 	print (code, l, langd[l], '%.1f' % round(pcent, 1), sep='\t')
 
+# Print the selected results in a file (-l option) and eventually save them (-o option)
 if options.lcodes is True:
 	if options.outputfile is not None:
 		try:

@@ -23,20 +23,23 @@ use Net::IDN::Encode ':all';
 use URI::Split qw(uri_split uri_join);
 use HTML::Strip;
 use HTML::Clean;
-use Time::HiRes qw( time );
+use Time::HiRes qw( time sleep );
 
 
 
 my ($help, $hostreduce, $wholelist, $fileprefix, $links_count);
 
+
+my ($help, $hostreduce, $wholelist, $fileprefix, $filesuffix, $links_count);
+
 usage() if ( @ARGV < 1
-	or ! GetOptions ('h|help' => \$help, 'fileprefix|fp=s' => \$fileprefix, 'hostreduce|hr' => \$hostreduce, 'all|a' => \$wholelist, 'links|l=i' => \$links_count)
+	or ! GetOptions ('h|help' => \$help, 'fileprefix|fp=s' => \$fileprefix, 'filesuffix|fs=s' => \$filesuffix, 'hostreduce|hr' => \$hostreduce, 'all|a' => \$wholelist, 'links|l=i' => \$links_count)
 	or defined $help
 	or (defined $wholelist && defined $links_count) );
 
 sub usage {
 	print "Unknown option: @_\n" if ( @_ );
-	print "Usage: perl XX.pl [--help|-h] [--fileprefix|-fp] prefix [--all|-a] [--links|-l] number [--hostreduce|-hr] \n\n";
+	print "Usage: perl XX.pl [--help|-h] [--fileprefix|-fp] prefix [--filesuffix|-fs] suffix [--all|-a] [--links|-l] number [--hostreduce|-hr] \n\n";
 	print "prefix : used to identify the files\n";
 	print "EITHER --all OR a given number of links\n";
 	print "hostreduce : keep only the hostname in each url\n\n";
@@ -44,22 +47,29 @@ sub usage {
 }
 
 
-my (@urls, @done, %links_done, %hostnames, $finaluri, $clean_text, $confidence, $lang, $suspicious, @check_again, @output, $join);
+my (@urls, @done, %links_done, %hostnames, $finaluri, $clean_text, $confidence, $lang, $suspicious, @output, $join);
 
 my $todo = 'LINKS-TODO';
-my $done = 'RESULTS-langid';
+my $done = 'RESULTS-langid'; # may change
 my $tocheck = 'LINKS-TO-CHECK';
 
 if (defined $fileprefix) {
 	$todo = $fileprefix . "_" . $todo;
-	$done = $fileprefix . "_" . $done;
+	$done = $fileprefix . "_" . $done; # may change
 	$tocheck = $fileprefix . "_" . $tocheck;
+}
+
+if (defined $filesuffix) {
+	$todo = $todo . "." . $filesuffix;
+	$done = $done . "." . $filesuffix; # may change
+	$tocheck = $tocheck . "." . $filesuffix;
 }
 
 if (-e $done) {
 	open (my $ldone, '<', $done);
 	while (<$ldone>) {
 		chomp;
+		$_ =~ s/^http:\/\///; # spare memory space
 		my @temp = split ("\t", $_);
 		if (scalar (@temp) == 3) {
 			$hostnames{$temp[0]}++;
@@ -77,7 +87,8 @@ if (-e $done) {
 if (-e $todo) {
 	open (my $ltodo, '<', $todo);
 	while (<$ltodo>) {
-		chomp($_);
+		chomp;
+		$_ =~ s/^http:\/\///; # spare memory space
 		# Filters
 		unless (exists $links_done{$_}) {
 			unless ( ($_ =~ m/\.ogg$|\.mp3$|\.avi$|\.mp4$/) || ($_ =~ m/\.jpg$|\.JPG$|\.jpeg$|\.png$|\.gif$/) ) {
@@ -116,11 +127,15 @@ $ua->timeout( 5 );
 ## Main loop
 my $i = 0;
 my $stack = 0;
+my $suspcount = 0;
 open (my $out, '>>', $done);
 open (my $check_again, '>>', $tocheck);
 
 foreach my $url (@urls) {
 	$stack++;
+	unless ($url =~ m/^http/) {
+		$url = "http://" . $url; # consequence of sparing memory space
+	}
 	# check redirection
 	$url =~ m/https?:\/\/(.+?)\//;
 	my $short = $1;
@@ -167,6 +182,14 @@ foreach my $url (@urls) {
 	# send request
   	$res = $ua->request($req);
 	if ($res->is_success) {
+		# check the size of the page (to avoid a memory overflow)
+		my $testheaders = $res->headers;
+		if ($testheaders->content_length) {
+			if ($testheaders->content_length > 500000) {
+				print "Dropped (by content-size): " . $finaluri . "\n";
+				next;
+			}
+		}
 		my $body = $res->decoded_content(charset => 'none');
 		$i++;
 
@@ -182,7 +205,8 @@ foreach my $url (@urls) {
 
 			next if (length($clean_text) < 100); # could also be another value
 		}
-
+		my $tries = 0;
+		FURLCHECK: # label to redo this part
 		# Furl alternative
 		my ( $minor_version, $code, $msg, $headers, $res );
 		eval { # WIDESTRING ERROR if no re-encoding, but re-encoding may break langid
@@ -195,7 +219,7 @@ foreach my $url (@urls) {
 			);
 		};
 		if ($@) {
-			print "An error occurred ($@), continuing\n";
+			#print "An error occurred ($@), continuing\n";
 			$clean_text = encode('UTF-8', $clean_text);
 			eval {
 				( $minor_version, $code, $msg, $headers, $res ) = $furl->request(
@@ -233,6 +257,7 @@ foreach my $url (@urls) {
 
 			my ($checkurl, $output);
 			if ($suspicious == 1) {
+				$suspcount++;
 				if (defined $hostreduce) {
 					$checkurl = lc($finaluri) . "\t" . lc($path) . "\t" . $lang . "\t" . $confidence;
 				}
@@ -252,9 +277,20 @@ foreach my $url (@urls) {
 			}
 		}
 		elsif ($code == 500) {
-			print "no langid server available\n";
-			exit;
+			# Make sure the langid server is really down (may still be an issue with multi-threading)
+			$tries++;
+			if ($tries <= 5) {
+				sleep(0.15);
+				goto FURLCHECK;
+			}
+			else {
+				print "no langid server available\n";
+				last;
+			}
 		}
+	}
+	else {
+		print "Dropped (timeout): " . $finaluri . "\n";
 	}
 	if (defined $links_count) {
 		if ($i == $links_count) {
@@ -273,6 +309,6 @@ close($ltodo);
 
 print "urls: " . $stack . "\n";
 print "visited: " . $i . "\n";
-print "suspicious: " . scalar(@check_again) . "\n";
+print "suspicious: " . $suspcount . "\n";
 my $end_time = time();
 print "execution time: " . sprintf("%.2f\n", $end_time - $start_time);
