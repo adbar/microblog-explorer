@@ -12,34 +12,34 @@
 use strict;
 use warnings;
 use Getopt::Long;
+use Fcntl qw(:flock SEEK_END);
 use Encode qw(encode);
 require Compress::Zlib;
 use base 'HTTP::Message';
 use Furl;
 use LWP::UserAgent;
 require LWP::Protocol::https;
-use IO::Socket::SSL;
-use Net::IDN::Encode ':all';
+#require LWPx::ParanoidAgent; # on Debian/Ubuntu package liblwpx-paranoidagent-perl
+#use IO::Socket::SSL;
+#use Net::IDN::Encode ':all';
 use URI::Split qw(uri_split uri_join);
 use HTML::Strip;
 use HTML::Clean;
 use Time::HiRes qw( time sleep );
+use Try::Tiny; # on Debian/Ubuntu package libtry-tiny-perl
 
 
-
-my ($help, $hostreduce, $wholelist, $fileprefix, $links_count);
-
-
-my ($help, $hostreduce, $wholelist, $fileprefix, $filesuffix, $links_count);
+my ($help, $seen, $hostreduce, $wholelist, $fileprefix, $filesuffix, $links_count);
 
 usage() if ( @ARGV < 1
-	or ! GetOptions ('h|help' => \$help, 'fileprefix|fp=s' => \$fileprefix, 'filesuffix|fs=s' => \$filesuffix, 'hostreduce|hr' => \$hostreduce, 'all|a' => \$wholelist, 'links|l=i' => \$links_count)
+	or ! GetOptions ('help|h' => \$help, 'seen|s=s' => \$seen, 'fileprefix|fp=s' => \$fileprefix, 'filesuffix|fs=s' => \$filesuffix, 'hostreduce|hr' => \$hostreduce, 'all|a' => \$wholelist, 'links|l=i' => \$links_count)
 	or defined $help
 	or (defined $wholelist && defined $links_count) );
 
 sub usage {
 	print "Unknown option: @_\n" if ( @_ );
-	print "Usage: perl XX.pl [--help|-h] [--fileprefix|-fp] prefix [--filesuffix|-fs] suffix [--all|-a] [--links|-l] number [--hostreduce|-hr] \n\n";
+	print "Usage: perl XX.pl [--help|-h] [--seen|-s] [--fileprefix|-fp] prefix [--filesuffix|-fs] suffix [--all|-a] [--links|-l] number [--hostreduce|-hr] \n\n";
+	print "seen : file containing the urls to skip\n";
 	print "prefix : used to identify the files\n";
 	print "EITHER --all OR a given number of links\n";
 	print "hostreduce : keep only the hostname in each url\n\n";
@@ -47,11 +47,26 @@ sub usage {
 }
 
 
-my (@urls, @done, %links_done, %hostnames, $finaluri, $clean_text, $confidence, $lang, $suspicious, @output, $join);
+my (@urls, %links_done, %hostnames, $finaluri, $clean_text, $confidence, $lang, $suspicious, @output, $join);
 
 my $todo = 'LINKS-TODO';
 my $done = 'RESULTS-langid'; # may change
 my $tocheck = 'LINKS-TO-CHECK';
+
+my $errfile = 'ERRORS';
+open (my $errout, ">>", $errfile) or die "Cannot open ERRORS file : $!\n";
+
+# http://perldoc.perl.org/functions/flock.html
+sub lock {
+	my ($fh) = @_;
+	flock($fh, LOCK_EX) or die "Cannot lock ERRORS file - $!\n";
+	# and, in case someone appended while we were waiting...
+	seek($fh, 0, SEEK_END) or die "Cannot seek ERRORS file - $!\n";
+}
+sub unlock {
+	my ($fh) = @_;
+	flock($fh, LOCK_UN) or die "Cannot unlock ERRORS file - $!\n";
+}
 
 if (defined $fileprefix) {
 	$todo = $fileprefix . "_" . $todo;
@@ -65,21 +80,27 @@ if (defined $filesuffix) {
 	$tocheck = $tocheck . "." . $filesuffix;
 }
 
-if (-e $done) {
-	open (my $ldone, '<', $done);
+if ((defined $seen) && (-e $seen)) {
+	open (my $ldone, '<', $seen);
 	while (<$ldone>) {
 		chomp;
 		$_ =~ s/^http:\/\///; # spare memory space
-		my @temp = split ("\t", $_);
-		if (scalar (@temp) == 3) {
-			$hostnames{$temp[0]}++;
-			$join = $temp[0];
+		if ($_ =~ m/\t/) {
+			my @temp = split ("\t", $_);
+			# two possibilities according to the 'host-reduce' option
+			if (scalar (@temp) == 3) {
+				$hostnames{$temp[0]}++;
+				$join = $temp[0];
+			}
+			elsif (scalar (@temp) == 4) {
+				$hostnames{$temp[0]}++;
+				$join = $temp[0] . $temp[1];
+			}
+			$links_done{$join}++;
 		}
-		elsif (scalar (@temp) == 4) {
-			$hostnames{$temp[0]}++;
-			$join = $temp[0] . $temp[1];
+		else { # if it's just a 'simple' list of urls
+			$links_done{$_}++;
 		}
-		$links_done{$join}++;
 	}
 	close($ldone);
 }
@@ -113,15 +134,15 @@ my @redirection = ('t.co', 'j.mp', 'is.gd', 'wp.me', 'bit.ly', 'goo.gl', 'xrl.us
 
 my $furl = Furl::HTTP->new(
         agent   => 'Microblog-Explorer/0.1',
-        timeout => 5,
+        timeout => 10,
 	#headers => [ 'Accept-Encoding' => 'gzip' ],  # useless here
 );
 
 my ($req, $res);
-my $ua = LWP::UserAgent->new;
+my $ua = LWP::UserAgent->new; # another possibility : my $ua = LWPx::ParanoidAgent->new;
 my $can_accept = HTTP::Message::decodable;
 $ua->agent("Microblog-Explorer/0.1");
-$ua->timeout( 5 );
+$ua->timeout(10);
 
 
 ## Main loop
@@ -136,10 +157,20 @@ foreach my $url (@urls) {
 	unless ($url =~ m/^http/) {
 		$url = "http://" . $url; # consequence of sparing memory space
 	}
+
+	# time process
+	## http://stackoverflow.com/questions/1165316/how-can-i-limit-the-time-spent-in-a-specific-section-of-a-perl-script
+	## http://stackoverflow.com/questions/3427401/perl-make-script-timeout-after-x-number-of-seconds
+	{ no warnings 'exiting';
+	#eval {
+	try {
+	local $SIG{ALRM} = sub { die "TIMEOUT\n" };
+	alarm 30;
+
 	# check redirection
 	$url =~ m/https?:\/\/(.+?)\//;
 	my $short = $1;
-	if ($short ~~ @redirection) {
+	if ( ($short ~~ @redirection) || (($url =~ m/\.[a-z]+\//) && (length($url) < 30)) ) { # not fully efficient
 		# found on http://stackoverflow.com/questions/2470053/how-can-i-get-the-ultimate-url-without-fetching-the-pages-using-perl-and-lwp
 		$req = HTTP::Request->new(HEAD => $url);
 		$req->header('Accept' => 'text/html');
@@ -148,14 +179,23 @@ foreach my $url (@urls) {
 			$url = $res->request()->uri();
 		}
 		else {
+			lock($errout);
+			print $errout "Dropped (redirection):\t" . $url . "\n";
+			unlock($errout);
+			$url =~ s/^http:\/\///;
+			$finaluri = lc($url);
+			$hostnames{$finaluri}++;
+			alarm 0;
 			next;
 		}
 	}
 
 	#check hostname
 	my ($scheme, $auth, $path, $query, $frag) = uri_split($url);
-	next if ($auth !~ m/\./);
-	next if ($scheme =~ m/^ftp/);
+	if (($auth !~ m/\./) || ($scheme =~ m/^ftp/)) {
+		alarm 0;
+		next;
+	}
 
 	if (defined $hostreduce) {
 		$finaluri = lc(uri_join($scheme, $auth));
@@ -163,15 +203,17 @@ foreach my $url (@urls) {
 	else {
 		$finaluri = lc(uri_join($scheme, $auth, $path));
 	}
-
-	if (exists $hostnames{$finaluri}) {
+		
+	my $temp_short = $finaluri;
+	$temp_short =~ s/^http:\/\///;
+	$temp_short = lc($temp_short);
+	if ( (exists $hostnames{$temp_short}) || ($links_done{$temp_short}) ) {
+		alarm 0;
 		next;
 	}
 	else {
-		$hostnames{$finaluri}++;
+		$hostnames{$temp_short}++;
 	}
-
-	push (@done, $finaluri);
 
 	# download, strip and put
 	$req = HTTP::Request->new(GET => $finaluri);
@@ -186,7 +228,10 @@ foreach my $url (@urls) {
 		my $testheaders = $res->headers;
 		if ($testheaders->content_length) {
 			if ($testheaders->content_length > 500000) {
-				print "Dropped (by content-size): " . $finaluri . "\n";
+				lock($errout);
+				print $errout "Dropped (by content-size):\t" . $finaluri . "\n";
+				unlock($errout);
+				alarm 0;
 				next;
 			}
 		}
@@ -194,7 +239,13 @@ foreach my $url (@urls) {
 		$i++;
 
 		{ no warnings 'uninitialized';
-			next if (length($body) < 100); # could be another value 
+			if (length($body) < 100) { # could be another value
+				lock($errout);
+				print $errout "Dropped (by body size):\t" . $finaluri . "\n";
+				unlock($errout);
+				alarm 0;
+				next;
+			}
 			my $h = new HTML::Clean(\$body);
 			$h->strip();
 			my $data = $h->data();
@@ -203,13 +254,20 @@ foreach my $url (@urls) {
 			$clean_text = $hs->parse( $$data );
 			$hs->eof;
 
-			next if (length($clean_text) < 100); # could also be another value
+			if (length($clean_text) < 100) { # could also be another value
+				lock($errout);
+				print $errout "Dropped (by clean size):\t" . $finaluri . "\n";
+				unlock($errout);
+				alarm 0;
+				next;
+			}
 		}
 		my $tries = 0;
 		FURLCHECK: # label to redo this part
 		# Furl alternative
 		my ( $minor_version, $code, $msg, $headers, $res );
-		eval { # WIDESTRING ERROR if no re-encoding, but re-encoding may break langid
+		# WIDESTRING ERROR if no re-encoding, but re-encoding may break langid
+		try {
 			( $minor_version, $code, $msg, $headers, $res ) = $furl->request(
 				method  => 'PUT',
 				host    => '78.46.186.58',
@@ -217,11 +275,11 @@ foreach my $url (@urls) {
 				path_query => 'detect',
 				content	=> $clean_text,
 			);
-		};
-		if ($@) {
+		}
+		catch {
 			#print "An error occurred ($@), continuing\n";
 			$clean_text = encode('UTF-8', $clean_text);
-			eval {
+			try {
 				( $minor_version, $code, $msg, $headers, $res ) = $furl->request(
 					method  => 'PUT',
 					host    => '78.46.186.58',
@@ -229,12 +287,15 @@ foreach my $url (@urls) {
 					path_query => 'detect',
 					content	=> $clean_text,
 				);
-			};
-			if ($@) {
-				print "ERROR: $@" . "url: " . $finaluri;
-				next;
 			}
-		}
+			catch {
+				lock($errout);
+				print $errout "ERROR: $@" . "\turl:\t" . $finaluri;
+				unlock($errout);
+				alarm 0;
+				next;
+			};
+		};
 		if ($code == 200) {
 			$suspicious = 0;
 			$res =~ m/"confidence": (.+?), "language": "([a-z]+?)"/;
@@ -280,7 +341,7 @@ foreach my $url (@urls) {
 			# Make sure the langid server is really down (may still be an issue with multi-threading)
 			$tries++;
 			if ($tries <= 5) {
-				sleep(0.15);
+				sleep(0.25);
 				goto FURLCHECK;
 			}
 			else {
@@ -290,17 +351,33 @@ foreach my $url (@urls) {
 		}
 	}
 	else {
-		print "Dropped (timeout): " . $finaluri . "\n";
+		lock($errout);
+		print $errout "Dropped (not found):\t" . $finaluri . "\n";
+		unlock($errout);
 	}
-	if (defined $links_count) {
-		if ($i == $links_count) {
-			last;
+
+	alarm 0;
+	} # end of try (timeout)
+	catch {
+		if ($_ eq "TIMEOUT\n") {
+			lock($errout);
+			print $errout "Handling timeout problem:\t" . $finaluri . "\n";
+			unlock($errout);
 		}
+		else {
+			die $_;
+		}
+	};
+	} # end of 'no warnings exiting'
+	# end the loop if the given number of urls was reached
+	if (defined $links_count) {
+		last if ($i == $links_count);
 	}
 }
 
 close($out);
 close($check_again);
+close($errout);
 
 splice(@urls, 0, $stack);
 open (my $ltodo, '>', $todo);

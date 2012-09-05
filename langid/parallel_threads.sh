@@ -8,7 +8,11 @@
 # This script is to be used with the output of a language identification system (https://github.com/saffsd/langid.py).
 
 
-# Usage : [file containing all the links] [number of requests wanted] [number of threads]
+if (($# < 3)) || (($# > 4))
+then
+	echo "Usage : [list of urls] [number of requests] [number of threads] [seen urls file (optional)]"
+	exit 1
+fi
 
 if (($3 > 10))
 then
@@ -19,9 +23,15 @@ fi
 listfile=$1
 req=$2
 num_files=$3
+if (($# == 4))
+then
+	seen=$4
+else
+	seen=0
+fi
 
 
-# Find out the number of requests
+# Work out lines per file.
 total_lines=$(cat ${listfile} | wc -l)
 
 if (($req < $total_lines))
@@ -41,14 +51,19 @@ split -a 1 -d --lines=${lines_per_file} ${listfile} LINKS-TODO.
 
 # Debug information
 echo -e "Total lines\t= ${total_lines}"
-echo -e "Lines per file\t= ${lines_per_file}"    
+echo -e "Lines per file\t= ${lines_per_file}"
 
 i=0
 for f in LINKS-TODO.*
 do
-	### start the threads
-	perl fetch-send-furl.pl -hr -a -fs $i $f &
-	sleep 0.25
+	### starting the threads
+	if (($seen == 0))
+	then
+		perl fetch-send-furl.pl --hostreduce --all --filesuffix $i $f &
+	else
+		perl fetch-send-furl.pl --hostreduce --all --seen $seen --filesuffix $i $f &
+	fi
+	sleep 0.5
 	((i++))
 done
 
