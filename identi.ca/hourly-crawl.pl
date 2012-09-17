@@ -177,8 +177,18 @@ my $exttotal = scalar (@external);
 %seen = ();
 @internal = grep { ! $seen{ $_ }++ } @internal;
 
-print "total int:\t" . scalar (@internal) . "\t(uniqueness ratio: " . sprintf("%.1f", $inttotal/scalar (@internal)) . ")\n";
-print "total ext:\t" . scalar (@external) . "\t(uniqueness ratio: " . sprintf("%.1f", $exttotal/scalar (@external)) . ")\n";
+if (@internal) {
+	print "total int:\t" . scalar (@internal) . "\t(uniqueness ratio: " . sprintf("%.1f", $inttotal/scalar (@internal)) . ")\n";
+}
+else {
+	print "No internal links.\n";
+}
+if (@external) {
+	print "total ext:\t" . scalar (@external) . "\t(uniqueness ratio: " . sprintf("%.1f", $exttotal/scalar (@external)) . ")\n";
+}
+else {
+	print "No external links.\n";
+}
 
 # write down the files
 open (my $resultint, '>>', $directory . '/result-int');
