@@ -27,22 +27,30 @@ use HTML::Strip;
 use HTML::Clean;
 use Time::HiRes qw( time sleep );
 use Try::Tiny; # on Debian/Ubuntu package libtry-tiny-perl
+use String::CRC32; # on Debian/Ubuntu package libstring-crc32-perl
 
+
+## Issues to file : languages to exclude
 
 # to do : more subs
-# correct path record ?
+# clean size drop problem ?
+# random urls for those which were shortened
+# need links_done ??
 
+my $agent = "Microblog-Explorer/0.2";
 
-my ($help, $seen, $hostreduce, $wholelist, $fileprefix, $filesuffix, $links_count);
+my ($help, $seen, $hostreduce, $wholelist, $fileprefix, $filesuffix, $links_count, $put_ip);
 
 usage() if ( @ARGV < 1
-	or ! GetOptions ('help|h' => \$help, 'seen|s=s' => \$seen, 'fileprefix|fp=s' => \$fileprefix, 'filesuffix|fs=s' => \$filesuffix, 'hostreduce|hr' => \$hostreduce, 'all|a' => \$wholelist, 'links|l=i' => \$links_count)
+	or ! GetOptions ('help|h' => \$help, 'putip|ip=s' => \$put_ip, 'seen|s=s' => \$seen, 'fileprefix|fp=s' => \$fileprefix, 'filesuffix|fs=s' => \$filesuffix, 'hostreduce|hr' => \$hostreduce, 'all|a' => \$wholelist, 'links|l=i' => \$links_count)
 	or defined $help
-	or (defined $wholelist && defined $links_count) );
+	or (defined $wholelist && defined $links_count)
+);
 
 sub usage {
 	print "Unknown option: @_\n" if ( @_ );
-	print "Usage: perl XX.pl [--help|-h] [--seen|-s] [--fileprefix|-fp] prefix [--filesuffix|-fs] suffix [--all|-a] [--links|-l] number [--hostreduce|-hr] \n\n";
+	print "Usage: perl XX.pl [--help|-h] [--putip|-ip] X.X.X.X [--seen|-s] [--fileprefix|-fp] prefix [--filesuffix|-fs] suffix [--all|-a] [--links|-l] number [--hostreduce|-hr] \n\n";
+	print "putip : ip of the langid server (default : 127.0.0.1)\n";
 	print "seen : file containing the urls to skip\n";
 	print "prefix : used to identify the files\n";
 	print "EITHER --all OR a given number of links\n";
@@ -50,8 +58,12 @@ sub usage {
 	exit;
 }
 
+if (!defined $put_ip) {
+	$put_ip = "127.0.0.1";
+}
 
-my (@urls, $url, %seen, %links_done, %hostnames, $finaluri, $clean_text, $confidence, $lang, $suspicious, $join, @redirect_candidates, $scheme, $auth, $path, $query, $frag);
+
+my (@urls, $url, %seen, %links_done, %hostnames, $finaluri, $clean_text, $confidence, $lang, $suspicious, $join, @redirect_candidates, $scheme, $auth, $path, $query, $frag, $crc, $temptext, $return);
 
 my $todo = 'LINKS-TODO';
 my $done = 'RESULTS-langid'; # may change
@@ -84,17 +96,18 @@ if ((defined $seen) && (-e $seen)) {
 			my @temp = split ("\t", $_);
 			# two possibilities according to the 'host-reduce' option
 			if (scalar (@temp) == 3) {
-				$hostnames{$temp[0]}++;
-				$join = $temp[0];
+				$crc = crc32($temp[0]);
+				$hostnames{$crc}++;
 			}
 			elsif (scalar (@temp) == 4) {
-				$hostnames{$temp[0]}++;
 				$join = $temp[0] . $temp[1];
+				$crc = crc32($join);
+				$hostnames{$crc}++;
 			}
-			$links_done{$join}++;
 		}
 		else { # if it's just a 'simple' list of urls
-			$links_done{$_}++;
+			$crc = crc32($_);
+			$hostnames{$crc}++;
 		}
 	}
 	close($ldone);
@@ -134,8 +147,10 @@ if (-e $todo) {
 					push (@urls, $tempurls[$rand]);
 					@tempurls = ();
 				}
-				unless (exists $links_done{$red_uri}) {
+				$crc = crc32($red_uri);
+				unless (exists $hostnames{$crc}) {
 					push (@urls, $red_uri);
+					$hostnames{$crc}++;
 					$identifier = $red_uri;
 				}
 				else {
@@ -144,23 +159,24 @@ if (-e $todo) {
 			}
 		}
 		else {
-			unless (exists $links_done{$ext_uri}) {
+			$crc = crc32($ext_uri);
+			unless (exists $hostnames{$crc}) {
 				push (@urls, $ext_uri);
+				$hostnames{$crc}++;
 			}
 		}
 		}
 	}
-	#last one ?
-	%seen = ();
-	@redirect_candidates = grep { ! $seen{ $_ }++ } @redirect_candidates;
 	close($ltodo);
 }
 else {
-	die 'No todo list found under this file name: ' . $todo;
+	die 'No to-do list found under this file name: ' . $todo;
 }
 
 %seen = ();
 @urls = grep { ! $seen{ $_ }++ } @urls;
+%seen = ();
+@redirect_candidates = grep { ! $seen{ $_ }++ } @redirect_candidates;
 die 'not enough links in the list' if ((defined $links_count) && (scalar(@urls) < $links_count));
 # my @temp = splice (@urls, 0, $links_count); # lots of RAM wasted for the remaining urls
 
@@ -169,53 +185,70 @@ my $start_time = time();
 my @redirection = ('t.co', 'j.mp', 'is.gd', 'wp.me', 'bit.ly', 'goo.gl', 'xrl.us', 'ur1.ca', 'b1t.it', 'dlvr.it', 'ping.fm', 'post.ly', 'p.ost.im', 'on.fb.me', 'tinyurl.com', 'friendfeed.com');
 
 my $furl = Furl::HTTP->new(
-        agent   => 'Microblog-Explorer/0.1',
+        agent   => $agent,
         timeout => 10,
 	#headers => [ 'Accept-Encoding' => 'gzip' ],  # useless here
 );
 
+my ($code, $put_response);
+sub furl_put_req {
+	my $text = shift;
+	my ( $minor_version, $code, $msg, $headers, $res ) = $furl->request(
+		method  => 'PUT',
+		host    => $put_ip,
+		port    => 9008,
+		path_query => 'detect',
+		content	=> $text,
+	);
+	return ( $code, $res );
+}
+
 my ($req, $res);
 my $ua = LWP::UserAgent->new; # another possibility : my $ua = LWPx::ParanoidAgent->new;
 my $can_accept = HTTP::Message::decodable;
-$ua->agent("Microblog-Explorer/0.1");
+$ua->agent($agent);
 $ua->timeout(10);
 
 
 ## Main loop
 
-my $stack = 0;
-my $visits = 0;
-my $i = 0;
-my $suspcount = 0;
-my $skip = 0;
+my ($stack, $visits, $i, $suspcount, $skip, $url_count, $redir_count) = (0) x 7;
 open (my $out, '>>', $done);
 open (my $check_again, '>>', $tocheck);
+
+
+sub process_url {
+	my $url = shift;
+	lock_and_write($log, $url, $logfile);
+	try {
+		fetch_url($url);
+	}
+	catch {
+		if ($_ =~ m/no server/) {
+			$skip = 1;
+			return;
+		}
+		# catch and print all types of errors
+		else {
+			$_ =~ s/ at .+?\.$//;
+			lock_and_write($errout, $_, $errfile);
+		}
+	};
+	$crc = crc32($url);
+	$hostnames{$crc}++;
+}
 
 foreach $url (@urls) {
 	# end the loop if the given number of urls was reached
 	if (defined $links_count) {
 		last if ($stack == $links_count);
 	}
+	# end the loop if there is no server available
+	last if ($skip == 1);
 
 	# try to fetch and to send the page
-	print $log $url . "\n";
-	try {
-		&fetch_url($url);
-	}
-	catch {
-		if ($_ =~ m/no server/) {
-			$skip = 1;
-			last;
-		}
-		# catch and print all types of errors
-		else {
-			$_ =~ s/ at .+?\.$//;
-			lock($errout);
-			print $errout $_;
-			unlock($errout);
-		}
-	};
-	$hostnames{$url}++;
+	$url_count++;
+	process_url($url);
 }
 
 foreach $url (@redirect_candidates) {
@@ -227,6 +260,7 @@ foreach $url (@redirect_candidates) {
 	last if ($skip == 1);
 
 	# check redirection
+	$redir_count++;
 	## found on http://stackoverflow.com/questions/2470053/how-can-i-get-the-ultimate-url-without-fetching-the-pages-using-perl-and-lwp
 	$req = HTTP::Request->new(HEAD => $url);
 	$req->header('Accept' => 'text/html');
@@ -235,14 +269,15 @@ foreach $url (@redirect_candidates) {
 		$url = $res->request()->uri();
 	}
 	else {
-		lock($errout);
-		print $errout "Dropped (redirection):\t" . $url . "\n";
-		unlock($errout);
+		lock_and_write($errout, "Dropped (redirection):\t" . $url, $errfile);
 		$url =~ s/^http:\/\///;
-		$hostnames{$url}++;
+		$crc = crc32($url);
+		$hostnames{$crc}++;
 		next;
 	}
-	
+
+	## process all the links, sort and pick random links ?
+
 	# check
 	if (defined $hostreduce) {
 		($scheme, $auth, $path, $query, $frag) = uri_split($url);
@@ -250,41 +285,25 @@ foreach $url (@redirect_candidates) {
 		$hostredux =~ s/^http:\/\///;
 		$url = $hostredux;
 	}
-	unless (exists $hostnames{$url}) { # also check links_done !
+	$crc = crc32($url);
+	unless ( exists $hostnames{$crc} ) {
 		# try to fetch and to send the page
-		print $log $url . "\n";
-		try {
-			&fetch_url($url);
-		}
-		catch {
-			if ($_ =~ m/no server/) {
-				last;
-			}
-			# catch and print all types of errors
-			else {
-				$_ =~ s/ at .+?\.$//;
-				lock($errout);
-				print $errout $_;
-				unlock($errout);
-			}
-		};
-	$hostnames{$url}++;
+		process_url($url);
 	}
 }
 
 
 # SUBROUTINES
 
-# http://perldoc.perl.org/functions/flock.html
-sub lock {
-	my ($fh) = @_;
-	flock($fh, LOCK_EX) or die "Cannot lock ERRORS file - $!\n";
-	# and, in case someone appended while we were waiting...
-	seek($fh, 0, SEEK_END) or die "Cannot seek ERRORS file - $!\n";
-}
-sub unlock {
-	my ($fh) = @_;
-	flock($fh, LOCK_UN) or die "Cannot unlock ERRORS file - $!\n";
+sub lock_and_write {
+	my ($fh, $text, $filetype) = @_;
+	chomp ($text);
+	# http://perldoc.perl.org/functions/flock.html
+	flock($fh, LOCK_EX) or die "Cannot lock " . $filetype . " file : $!\n";
+	# in case something appended while we were waiting...
+	seek($fh, 0, SEEK_END) or die "Cannot seek " . $filetype . " file : $!\n";
+	print $fh $text . "\n" or die "Cannot write to " . $filetype . " file : $!\n";
+	flock($fh, LOCK_UN) or die "Cannot unlock " . $filetype . " file : $!\n";
 }
 
 sub fetch_url {
@@ -298,7 +317,6 @@ sub fetch_url {
 	# time process
 	## http://stackoverflow.com/questions/1165316/how-can-i-limit-the-time-spent-in-a-specific-section-of-a-perl-script
 	## http://stackoverflow.com/questions/3427401/perl-make-script-timeout-after-x-number-of-seconds
-	#{ no warnings 'exiting';
 	try {
 	local $SIG{ALRM} = sub { die "TIMEOUT\n" };
 	alarm 30;
@@ -356,46 +374,45 @@ sub fetch_url {
 
 	my $text = $clean_text;
 	my $tries = 0;
-	FURLCHECK: # label to redo this part
-	# Furl alternative
-	my ( $minor_version, $code, $msg, $headers, $res );
-	# WIDESTRING ERROR if no re-encoding, but re-encoding may break langid
-	try {
-		( $minor_version, $code, $msg, $headers, $res ) = $furl->request(
-			method  => 'PUT',
-			host    => '78.46.186.58',
-			port    => 9008,
-			path_query => 'detect',
-			content	=> $text,
-		);
-	}
-	catch {
-		$text = encode('UTF-8', $text);
+	$code = 0;
+	until ( ($code == 200) || ($tries >= 10) ) {
+		if ($tries > 0) {
+			sleep(0.5);
+		}
+		# WIDESTRING ERROR if no re-encoding, but re-encoding may break langid
 		try {
-			( $minor_version, $code, $msg, $headers, $res ) = $furl->request(
-				method  => 'PUT',
-				host    => '78.46.186.58',
-				port    => 9008,
-				path_query => 'detect',
-				content	=> $text,
-			);
+			( $code, $put_response ) = furl_put_req($text);
 		}
 		catch {
-			alarm 0;
-			die "ERROR: $@" . "\turl:\t" . $finaluri;
+			$text = encode('UTF-8', $text);
+			try {
+				( $code, $put_response ) = furl_put_req($text);
+			}
+			catch {
+				alarm 0;
+				die "ERROR: $@" . "\turl:\t" . $finaluri;
+			};
 		};
-	};
-	if ($code == 200) {
+		$tries++;
+	}
+
+	if ($code == 500) {
+		# Make sure the langid server is really down (may still be an issue with multi-threading)
+		print "no langid server available\n";
+		alarm 0;
+		die "no server";
+	}
+	elsif ($code == 200) {
 		$suspicious = 0;
-		$res =~ m/"confidence": (.+?), "language": "([a-z]+?)"/;
-		$confidence = $1;
+		$put_response =~ m/"confidence": (.+?), "language": "([a-z]+?)"/;
+ex		$confidence = $1;
 		$lang = $2;
 
 		# problems with encoding changes, these codes can also be bg, ja, ru, etc.
 		if ($confidence < 0.5) {
 			$suspicious = 1;
 		}
-		elsif ( ($lang eq "zh") || ($lang eq "qu") || ($lang eq "ps") || ($lang eq "la") || ($lang eq "lo") || ($lang eq "an") ) { 
+		elsif ( ($lang eq "zh") || ($lang eq "qu") || ($lang eq "ps") || ($lang eq "la") || ($lang eq "lo") || ($lang eq "an") ) { # am, kw, ...
 			$suspicious = 1;
 		}
 		elsif ( ($lang eq "el") && ($auth !~ m/\.gr$/) && ($confidence != 1) ) {
@@ -417,19 +434,8 @@ sub fetch_url {
 			print $out $output . "\n";
 		}
 	}
-	elsif ($code == 500) {
-		# Make sure the langid server is really down (may still be an issue with multi-threading)
-		$tries++;
-		if ($tries <= 5) {
-			sleep(0.25);
-			goto FURLCHECK;
-		}
-		else {
-			print "no langid server available\n";
-			return "no server";
-		}
-	}
 	else {
+		alarm 0;
 		die "Dropped (not found):\t" . $finaluri;
 	}
 
@@ -442,13 +448,18 @@ close($check_again);
 close($errout);
 close($log);
 
-splice(@urls, 0, $stack);
+unless ($skip == 1) {
+	splice(@urls, 0, $url_count);
+	splice(@redirect_candidates, 0, $redir_count);
+}
 open (my $ltodo, '>', $todo);
 print $ltodo join("\n", @urls);
+print $ltodo join("\n", @redirect_candidates);
 close($ltodo);
 
-my $total = scalar(@urls) + scalar(@redirect_candidates); # why doesn't it work ?
-print "considered:\t" . $total . "\n";
+my $total = scalar(@urls) + scalar(@redirect_candidates);
+print "seen:\t\t" . $total . "\n";
+print "redirected:\t" . scalar(@redirect_candidates) . "\n";
 print "tried:\t\t" . $stack . "\n";
 print "visited:\t" . $visits . "\n";
 print "positive:\t" . $i . "\n";

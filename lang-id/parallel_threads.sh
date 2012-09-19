@@ -7,6 +7,10 @@
 
 # This script is to be used with the output of a language identification system (https://github.com/saffsd/langid.py).
 
+## example of use:
+## (python langid.py -s --host=localhost -l en,cs,de,sk,fr,pl,it,es,ja,nl,ru,he,hu,sl,hr,pt,sv,fi,et,no,lt,da,ro,bs,tr,ar,ka,ca,el,uk,is,bg,lv,vi,sw,sr,eo,nb,ga,eu &> lang-id.log &)
+## (bash parallel_threads.sh list-of-links 50000 6 &> logfile.log &)
+
 
 if (($# < 3)) || (($# > 4))
 then
@@ -23,12 +27,6 @@ fi
 listfile=$1
 req=$2
 num_files=$3
-if (($# == 4))
-then
-	seen=$4
-else
-	seen=0
-fi
 
 
 # Work out lines per file.
@@ -40,7 +38,6 @@ then
 	listfile=TEMP1
 	((lines_per_file = (req + num_files - 1) / num_files))
 else
-
 	((lines_per_file = (total_lines + num_files - 1) / num_files))
 fi
 
@@ -57,11 +54,11 @@ i=0
 for f in LINKS-TODO.*
 do
 	### starting the threads
-	if (($seen == 0))
+	if (($# == 4))
 	then
-		perl fetch-send-furl.pl --hostreduce --all --filesuffix $i $f &
+		perl fetch-send-furl.pl --seen $4 --hostreduce --all --filesuffix $i $f &
 	else
-		perl fetch-send-furl.pl --hostreduce --all --seen $seen --filesuffix $i $f &
+		perl fetch-send-furl.pl --hostreduce --all --filesuffix $i $f &
 	fi
 	sleep 0.5
 	((i++))
@@ -72,7 +69,7 @@ wait
 # Merge the files
 cat RESULTS-langid.* >> RESULTS
 rm RESULTS-langid.*
-cat LINKS-TODO.* >> TODO
+cat LINKS-TODO.* > TODO
 rm LINKS-TODO.*
 cat LINKS-TO-CHECK.* >> TO-CHECK
 rm LINKS-TO-CHECK.*
