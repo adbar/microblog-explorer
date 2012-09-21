@@ -32,8 +32,7 @@ use String::CRC32; # on Debian/Ubuntu package libstring-crc32-perl
 
 ## Issues to file : languages to exclude
 
-# to do : more subs
-# clean size drop problem ?
+# to do :
 # random urls for those which were shortened
 # need links_done ??
 
@@ -92,6 +91,7 @@ if ((defined $seen) && (-e $seen)) {
 	while (<$ldone>) {
 		chomp;
 		$_ =~ s/^http:\/\///; # spare memory space
+		$_ =~ s/\/$//; # avoid duplicates like www.mestys-starec.eu and www.mestys-starec.eu/
 		if ($_ =~ m/\t/) {
 			my @temp = split ("\t", $_);
 			# two possibilities according to the 'host-reduce' option
@@ -118,6 +118,9 @@ if (-e $todo) {
 	my ($identifier, @tempurls);
 	while (<$ltodo>) {
 		chomp;
+		unless ($_ =~ m/^http/) {
+		$_ = "http://" . $_; # consequence of sparing memory space in the "todo" files
+		}
 		# just in case
 		next if (length($_) <= 10);
 		next if ( ($_ =~ m/\.ogg$|\.mp3$|\.avi$|\.mp4$/) || ($_ =~ m/\.jpg$|\.JPG$|\.jpeg$|\.png$|\.gif$/) ); #pdf
@@ -125,16 +128,18 @@ if (-e $todo) {
 			push (@redirect_candidates, $_);
 		}
 		else {
-		($scheme, $auth, $path, $query, $frag) = uri_split($_); # problem : without query ?
+		($scheme, $auth, $path, $query, $frag) = uri_split($_);
 		next if (($auth !~ m/\./) || ($scheme =~ m/^ftp/));
 		my $red_uri = uri_join($scheme, $auth);
+		# without query ? necessary elements might be lacking
 		my $ext_uri = uri_join($scheme, $auth, $path);
 		# spare memory space
 		$red_uri =~ s/^http:\/\///;
 		$ext_uri =~ s/^http:\/\///;
 		
 		# find out if the url has already been stored
-		if (defined $hostreduce) {
+		## check for www.mestys-starec.eu vs www.mestys-starec.eu/ cases
+		if ( (defined $hostreduce) || (length($ext_uri) == length($red_uri)+1) ) {
 			if ((defined $identifier) && ($red_uri eq $identifier)) {
 				push (@tempurls, $ext_uri);
 			}
@@ -177,7 +182,7 @@ else {
 @urls = grep { ! $seen{ $_ }++ } @urls;
 %seen = ();
 @redirect_candidates = grep { ! $seen{ $_ }++ } @redirect_candidates;
-die 'not enough links in the list' if ((defined $links_count) && (scalar(@urls) < $links_count));
+die 'not enough links in the list, try --all ?' if ((defined $links_count) && (scalar(@urls) < $links_count));
 # my @temp = splice (@urls, 0, $links_count); # lots of RAM wasted for the remaining urls
 
 my $start_time = time();
@@ -213,10 +218,11 @@ $ua->timeout(10);
 ## Main loop
 
 my ($stack, $visits, $i, $suspcount, $skip, $url_count, $redir_count) = (0) x 7;
-open (my $out, '>>', $done);
-open (my $check_again, '>>', $tocheck);
 
+open (my $out_fh, '>>', $done) or die "Cannot open RESULTS file : $!\n";
+open (my $check_again_fh, '>>', $tocheck) or die "Cannot open TO-CHECK file : $!\n";
 
+## this is a test
 sub process_url {
 	my $url = shift;
 	lock_and_write($log, $url, $logfile);
@@ -312,7 +318,7 @@ sub fetch_url {
 	unless ($finaluri =~ m/^http/) {
 		$finaluri = "http://" . $finaluri; # consequence of sparing memory space
 	}
-	($scheme, $auth, $path, $query, $frag) = uri_split($finaluri);
+	#($scheme, $auth, $path, $query, $frag) = uri_split($finaluri);
 
 	# time process
 	## http://stackoverflow.com/questions/1165316/how-can-i-limit-the-time-spent-in-a-specific-section-of-a-perl-script
@@ -342,7 +348,7 @@ sub fetch_url {
 		my $body = $res->decoded_content(charset => 'none');
 
 		{ no warnings 'uninitialized';
-			if (length($body) < 100) { # could be another value
+			if (length($body) < 1000) { # was 100, could be another value
 				alarm 0;
 				die "Dropped (by body size):\t\t" . $finaluri;
 			}
@@ -354,11 +360,15 @@ sub fetch_url {
 			$clean_text = $hs->parse( $$data );
 			$hs->eof;
 
-			if (length($clean_text) < 100) { # could also be another value
+			if (length($clean_text) < 500) { # was 100, could also be another value
 				alarm 0;
 				die "Dropped (by clean size):\t" . $finaluri;
 			}
 		}
+	}
+	else {
+		alarm 0;
+		die "Dropped (no response):\t\t" . $finaluri;
 	}
 	} # end of try
 	catch {
@@ -375,7 +385,7 @@ sub fetch_url {
 	my $text = $clean_text;
 	my $tries = 0;
 	$code = 0;
-	until ( ($code == 200) || ($tries >= 10) ) {
+	until ( ($code == 200) || ($tries >= 5) ) {
 		if ($tries > 0) {
 			sleep(0.5);
 		}
@@ -405,7 +415,7 @@ sub fetch_url {
 	elsif ($code == 200) {
 		$suspicious = 0;
 		$put_response =~ m/"confidence": (.+?), "language": "([a-z]+?)"/;
-ex		$confidence = $1;
+		$confidence = $1;
 		$lang = $2;
 
 		# problems with encoding changes, these codes can also be bg, ja, ru, etc.
@@ -422,16 +432,16 @@ ex		$confidence = $1;
 			$suspicious = 1;
 		}
 
-		my ($checkurl, $output);
+		my $output_result = $finaluri . "\t" . $lang . "\t" . $confidence;
 		if ($suspicious == 1) {
 			$suspcount++;
-			$checkurl = $finaluri . "\t" . $lang . "\t" . $confidence;
-			print $check_again $checkurl . "\n";
+			print $check_again_fh $output_result . "\n";
+			#lock_and_write($check_again_fh, $output_result, $tocheck);
 		}
 		else {
 			$i++;
-			$output = $finaluri . "\t" . $lang . "\t" . $confidence;
-			print $out $output . "\n";
+			print $out_fh $output_result . "\n";
+			#lock_and_write($out_fh, $output_result, $done);
 		}
 	}
 	else {
@@ -443,8 +453,8 @@ ex		$confidence = $1;
 } # end of subroutine
 
 
-close($out);
-close($check_again);
+close($out_fh);
+close($check_again_fh);
 close($errout);
 close($log);
 
@@ -457,9 +467,9 @@ print $ltodo join("\n", @urls);
 print $ltodo join("\n", @redirect_candidates);
 close($ltodo);
 
-my $total = scalar(@urls) + scalar(@redirect_candidates);
+my $total = $url_count + $redir_count;
 print "seen:\t\t" . $total . "\n";
-print "redirected:\t" . scalar(@redirect_candidates) . "\n";
+print "redirected:\t" . $redir_count . "\n";
 print "tried:\t\t" . $stack . "\n";
 print "visited:\t" . $visits . "\n";
 print "positive:\t" . $i . "\n";
