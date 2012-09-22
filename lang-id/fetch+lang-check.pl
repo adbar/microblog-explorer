@@ -35,35 +35,58 @@ use String::CRC32; # on Debian/Ubuntu package libstring-crc32-perl
 # to do :
 # random urls for those which were shortened
 # need links_done ??
+# undef links that are already processed
+# pack crc ?
+# change 'hostnames' name
 
-my $agent = "Microblog-Explorer/0.2";
 
-my ($help, $seen, $hostreduce, $wholelist, $fileprefix, $filesuffix, $links_count, $put_ip);
-
+# command-line options
+my ($help, $seen, $hostreduce, $wholelist, $fileprefix, $filesuffix, $links_count, $put_ip, $port, $timeout);
 usage() if ( @ARGV < 1
-	or ! GetOptions ('help|h' => \$help, 'putip|ip=s' => \$put_ip, 'seen|s=s' => \$seen, 'fileprefix|fp=s' => \$fileprefix, 'filesuffix|fs=s' => \$filesuffix, 'hostreduce|hr' => \$hostreduce, 'all|a' => \$wholelist, 'links|l=i' => \$links_count)
+	or ! GetOptions ('help|h' => \$help, 'putip|ip=s' => \$put_ip, 'port|p=i' => \$port, 'timeout|t=i' => \$timeout, 'seen|s=s' => \$seen, 'fileprefix|fp=s' => \$fileprefix, 'filesuffix|fs=s' => \$filesuffix, 'hostreduce|hr' => \$hostreduce, 'all|a' => \$wholelist, 'links|l=i' => \$links_count)
 	or defined $help
 	or (defined $wholelist && defined $links_count)
 );
 
 sub usage {
 	print "Unknown option: @_\n" if ( @_ );
-	print "Usage: perl XX.pl [--help|-h] [--putip|-ip] X.X.X.X [--seen|-s] [--fileprefix|-fp] prefix [--filesuffix|-fs] suffix [--all|-a] [--links|-l] number [--hostreduce|-hr] \n\n";
+	print "Usage: perl XX.pl [--help|-h] [--putip|-ip] X.X.X.X [--port|-p] [--timeout|-t] [--seen|-s] [--fileprefix|-fp] prefix [--filesuffix|-fs] suffix [--all|-a] [--links|-l] number [--hostreduce|-hr] \n\n";
+	print "putip : ip of the langid server (default : 127.0.0.1)\n";
+	print "port : port of the langid server (default : 9008)\n";
 	print "putip : ip of the langid server (default : 127.0.0.1)\n";
 	print "seen : file containing the urls to skip\n";
 	print "prefix : used to identify the files\n";
 	print "EITHER --all OR a given number of links\n";
-	print "hostreduce : keep only the hostname in each url\n\n";
+	print "hostreduce : keep only the hostname & evt. a random full URL for each hostname\n\n";
 	exit;
 }
 
+
+# INITIALIZING
+my $start_time = time();
 if (!defined $put_ip) {
 	$put_ip = "127.0.0.1";
 }
+if (!defined $port) {
+	$port = 9008;
+}
+if (!defined $timeout) {
+	$timeout = 10;
+}
+## set alarm accordingly
+my $alarm_timeout = 20 + $timeout;
 
+## Agent here
+my $agent = "Microblog-Explorer/0.2";
 
-my (@urls, $url, %seen, %links_done, %hostnames, $finaluri, $clean_text, $confidence, $lang, $suspicious, $join, @redirect_candidates, $scheme, $auth, $path, $query, $frag, $crc, $temptext, $return);
+## Most global variables here
+my (@urls, $url, %seen, %hostnames, $clean_text, $confidence, $lang, $suspicious, $join, @redirect_candidates, $scheme, $auth, $path, $query, $frag, $crc);
 
+### redirection list, may not be exhaustive
+my @redirection = ('t.co', 'j.mp', 'is.gd', 'wp.me', 'bit.ly', 'goo.gl', 'xrl.us', 'ur1.ca', 'b1t.it', 'dlvr.it', 'ping.fm', 'post.ly', 'p.ost.im', 'on.fb.me', 'tinyurl.com', 'friendfeed.com');
+
+## Files
+### bound to change by command-line option
 my $todo = 'LINKS-TODO';
 my $done = 'RESULTS-langid'; # may change
 my $tocheck = 'LINKS-TO-CHECK';
@@ -86,6 +109,7 @@ if (defined $filesuffix) {
 	$tocheck = $tocheck . "." . $filesuffix;
 }
 
+# Process the 'seen' file, if any
 if ((defined $seen) && (-e $seen)) {
 	open (my $ldone, '<', $seen);
 	while (<$ldone>) {
@@ -113,6 +137,7 @@ if ((defined $seen) && (-e $seen)) {
 	close($ldone);
 }
 
+# Process the 'todo' file (required)
 if (-e $todo) {
 	open (my $ltodo, '<', $todo);
 	my ($identifier, @tempurls);
@@ -121,14 +146,20 @@ if (-e $todo) {
 		unless ($_ =~ m/^http/) {
 		$_ = "http://" . $_; # consequence of sparing memory space in the "todo" files
 		}
-		# just in case
+		# just in case : avoid possible traps
 		next if (length($_) <= 10);
-		next if ( ($_ =~ m/\.ogg$|\.mp3$|\.avi$|\.mp4$/) || ($_ =~ m/\.jpg$|\.JPG$|\.jpeg$|\.png$|\.gif$/) ); #pdf
-		if (($_ =~ m/\.[a-z]+\/.+/) && (length($_) < 30)) {
+		next if ( ($_ =~ m/\.ogg$|\.mp3$|\.avi$|\.mp4$/) || ($_ =~ m/\.jpg$|\.JPG$|\.jpeg$|\.png$|\.gif$/) );
+		next if ($_ =~ m/\.pdf$/);
+
+		# url splitting
+		($scheme, $auth, $path, $query, $frag) = uri_split($_);
+		if ( ($auth ~~ @redirection) || (($_ =~ m/\.[a-z]+\/.+/) && (length($_) < 30)) ) {
+			## DO SOME PROCESSING HERE
 			push (@redirect_candidates, $_);
 		}
+		## if no redirection
 		else {
-		($scheme, $auth, $path, $query, $frag) = uri_split($_);
+		
 		next if (($auth !~ m/\./) || ($scheme =~ m/^ftp/));
 		my $red_uri = uri_join($scheme, $auth);
 		# without query ? necessary elements might be lacking
@@ -140,6 +171,7 @@ if (-e $todo) {
 		# find out if the url has already been stored
 		## check for www.mestys-starec.eu vs www.mestys-starec.eu/ cases
 		if ( (defined $hostreduce) || (length($ext_uri) == length($red_uri)+1) ) {
+			## sampling : reduction from many urls with the same hostname to hostname & sample (random) url
 			if ((defined $identifier) && ($red_uri eq $identifier)) {
 				push (@tempurls, $ext_uri);
 			}
@@ -152,7 +184,7 @@ if (-e $todo) {
 					push (@urls, $tempurls[$rand]);
 					@tempurls = ();
 				}
-				$crc = crc32($red_uri);
+				$crc = crc32($red_uri); # spare memory
 				unless (exists $hostnames{$crc}) {
 					push (@urls, $red_uri);
 					$hostnames{$crc}++;
@@ -164,7 +196,7 @@ if (-e $todo) {
 			}
 		}
 		else {
-			$crc = crc32($ext_uri);
+			$crc = crc32($ext_uri); # spare memory
 			unless (exists $hostnames{$crc}) {
 				push (@urls, $ext_uri);
 				$hostnames{$crc}++;
@@ -183,51 +215,45 @@ else {
 %seen = ();
 @redirect_candidates = grep { ! $seen{ $_ }++ } @redirect_candidates;
 die 'not enough links in the list, try --all ?' if ((defined $links_count) && (scalar(@urls) < $links_count));
-# my @temp = splice (@urls, 0, $links_count); # lots of RAM wasted for the remaining urls
-
-my $start_time = time();
-
-my @redirection = ('t.co', 'j.mp', 'is.gd', 'wp.me', 'bit.ly', 'goo.gl', 'xrl.us', 'ur1.ca', 'b1t.it', 'dlvr.it', 'ping.fm', 'post.ly', 'p.ost.im', 'on.fb.me', 'tinyurl.com', 'friendfeed.com');
 
 my $furl = Furl::HTTP->new(
         agent   => $agent,
-        timeout => 10,
-	#headers => [ 'Accept-Encoding' => 'gzip' ],  # useless here
+        timeout => $timeout,
 );
 
 my ($code, $put_response);
 sub furl_put_req {
 	my $text = shift;
-	my ( $minor_version, $code, $msg, $headers, $res ) = $furl->request(
+	my ( $minor_version, $sub_code, $msg, $headers, $res ) = $furl->request(
 		method  => 'PUT',
 		host    => $put_ip,
-		port    => 9008,
+		port    => $port,
 		path_query => 'detect',
 		content	=> $text,
 	);
-	return ( $code, $res );
+	return ( $sub_code, $res );
 }
 
 my ($req, $res);
 my $ua = LWP::UserAgent->new; # another possibility : my $ua = LWPx::ParanoidAgent->new;
 my $can_accept = HTTP::Message::decodable;
 $ua->agent($agent);
-$ua->timeout(10);
+$ua->timeout($timeout);
 
 
-## Main loop
+# MAIN LOOP
 
 my ($stack, $visits, $i, $suspcount, $skip, $url_count, $redir_count) = (0) x 7;
 
 open (my $out_fh, '>>', $done) or die "Cannot open RESULTS file : $!\n";
 open (my $check_again_fh, '>>', $tocheck) or die "Cannot open TO-CHECK file : $!\n";
 
-## this is a test
+## this is experimental
 sub process_url {
-	my $url = shift;
-	lock_and_write($log, $url, $logfile);
+	my $sub_url = shift;
+	lock_and_write($log, $sub_url, $logfile);
 	try {
-		fetch_url($url);
+		fetch_url($sub_url);
 	}
 	catch {
 		if ($_ =~ m/no server/) {
@@ -240,8 +266,9 @@ sub process_url {
 			lock_and_write($errout, $_, $errfile);
 		}
 	};
-	$crc = crc32($url);
+	$crc = crc32($sub_url);
 	$hostnames{$crc}++;
+	return;
 }
 
 foreach $url (@urls) {
@@ -255,6 +282,7 @@ foreach $url (@urls) {
 	# try to fetch and to send the page
 	$url_count++;
 	process_url($url);
+	## undef ?
 }
 
 foreach $url (@redirect_candidates) {
@@ -310,6 +338,7 @@ sub lock_and_write {
 	seek($fh, 0, SEEK_END) or die "Cannot seek " . $filetype . " file : $!\n";
 	print $fh $text . "\n" or die "Cannot write to " . $filetype . " file : $!\n";
 	flock($fh, LOCK_UN) or die "Cannot unlock " . $filetype . " file : $!\n";
+	return;
 }
 
 sub fetch_url {
@@ -325,7 +354,7 @@ sub fetch_url {
 	## http://stackoverflow.com/questions/3427401/perl-make-script-timeout-after-x-number-of-seconds
 	try {
 	local $SIG{ALRM} = sub { die "TIMEOUT\n" };
-	alarm 30;
+	alarm $alarm_timeout;
 
 	# download, strip and put
 	$req = HTTP::Request->new(GET => $finaluri);
@@ -340,7 +369,7 @@ sub fetch_url {
 		# check the size of the page (to avoid a memory overflow)
 		my $testheaders = $res->headers;
 		if ($testheaders->content_length) {
-			if ($testheaders->content_length > 500000) {
+			if ($testheaders->content_length > 1000000) { # was 500000, too low
 				alarm 0;
 				die "Dropped (by content-size):\t" . $finaluri;
 			}
@@ -381,8 +410,12 @@ sub fetch_url {
 		}
 	};
 	alarm 0;
+	#return $clean_text;
+#}
 
-	my $text = $clean_text;
+#sub langid {
+	#my ($text, $finaluri) = @_;
+	my $text = $clean_text; # should be changed
 	my $tries = 0;
 	$code = 0;
 	until ( ($code == 200) || ($tries >= 5) ) {
@@ -399,7 +432,7 @@ sub fetch_url {
 				( $code, $put_response ) = furl_put_req($text);
 			}
 			catch {
-				alarm 0;
+				#alarm 0; # not necessary ?
 				die "ERROR: $@" . "\turl:\t" . $finaluri;
 			};
 		};
@@ -448,7 +481,6 @@ sub fetch_url {
 		alarm 0;
 		die "Dropped (not found):\t" . $finaluri;
 	}
-
 	return;
 } # end of subroutine
 
