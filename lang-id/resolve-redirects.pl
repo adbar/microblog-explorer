@@ -58,23 +58,36 @@ $ua->timeout($timeout);
 
 ### redirection list, may not be exhaustive
 my @redirection = ('t.co', 'j.mp', 'is.gd', 'wp.me', 'bit.ly', 'goo.gl', 'xrl.us', 'ur1.ca', 'b1t.it', 'dlvr.it', 'ping.fm', 'post.ly', 'p.ost.im', 'on.fb.me', 'tinyurl.com', 'friendfeed.com');
-my ($redir_count, $positive, $negative) = (0) x 3;
+my ($redir_count, $positive, $negative, $skipped) = (0) x 4;
 
 
 ## Files
+
 ### bound to change by command-line option
 my $todo = 'LINKS-TODO';
-open (my $ltodo, '<', $todo) or die "Cannot open LINKS-TODO file : $!\n";
-
 my $errfile = 'red-ERRORS';
-open (my $errout, ">>", $errfile) or die "Cannot open ERRORS file : $!\n";
-
+my $badh_file = 'BAD-HOSTS';
 my $done = 'REDIRECTS'; # may change
-open (my $out_fh, '>>', $done) or die "Cannot open REDIRECTS file : $!\n";
-
 my $norm = 'OTHERS'; # may change
+
+### spawn different files with the threads
+if (defined $filesuffix) {
+	$todo = $todo . "." . $filesuffix;
+	$errfile = $errfile . "." . $filesuffix; # may change
+	$badh_file = $badh_file . "." . $filesuffix;
+	$done = $done . "." . $filesuffix;
+	$norm = $norm . "." . $filesuffix;
+}
+
+open (my $ltodo, '<', $todo) or die "Cannot open LINKS-TODO file : $!\n";
+open (my $errout, ">>", $errfile) or die "Cannot open ERRORS file : $!\n";
+open (my $badout, ">>", $badh_file) or die "Cannot open BAD-HOSTS file : $!\n";
+open (my $out_fh, '>>', $done) or die "Cannot open REDIRECTS file : $!\n";
 open (my $norm_fh, '>>', $norm) or die "Cannot open OTHERS file : $!\n";
 
+
+my (%bad_hosts, $bonitaet, $current_tries, $current_errors);
+my $current_host = "dummy";
 
 
 # MAIN LOOP
@@ -88,9 +101,34 @@ while (<$ltodo>) {
 	#}
 	my $url = $_;
 	my ($scheme, $auth, $path, $query, $frag) = uri_split($url);
-	if ( ($auth ~~ @redirection) || (($_ =~ m/\.[a-z]+\/.+/) && (length($url) < 30)) ) {
-		# check redirection
+	# exit if it is a bad host
+	if (exists $bad_hosts{$auth}) {
 		$redir_count++;
+		$skipped++;
+		next;
+	}
+	# check redirection
+	if ( ($auth ~~ @redirection) || (($_ =~ m/\.[a-z]+\/.+/) && (length($url) < 30)) ) {
+		$redir_count++;
+		if ($auth eq $current_host) {
+			# check the host : if there are too many errors it gets banned
+			unless ($current_errors == 0) {
+				if ($current_tries >= 20) {
+					$bonitaet = $current_errors / $current_tries;
+					if ($bonitaet > 0.9) {
+						$bad_hosts{$auth}++;
+						lock_and_write($badout, $auth, $badh_file);
+					}
+				}
+			}
+		}
+		else {
+			$current_host = $auth;
+			$current_tries = 0;
+			$current_errors = 0;
+		}
+
+		$current_tries++;
 		## found on http://stackoverflow.com/questions/2470053/how-can-i-get-the-ultimate-url-without-fetching-the-pages-using-perl-and-lwp
 		$req = HTTP::Request->new(HEAD => $url);
 		$req->header(
@@ -106,6 +144,7 @@ while (<$ltodo>) {
 		else {
 			lock_and_write($errout, $url, $errfile);
 			$negative++;
+			$current_errors++;
 		}
 	}
 	else {
@@ -116,6 +155,7 @@ close($ltodo);
 close($out_fh);
 close($norm_fh);
 close($errout);
+close($badout);
 
 
 # Necessary if there are several threads
@@ -131,8 +171,11 @@ sub lock_and_write {
 	return;
 }
 
-
+if (defined $filesuffix) {
+	print "### thread number:\t" . $filesuffix . "\n";
+}
 print "redirections number:\t" . $redir_count . "\n";
+print "skipped:\t" . $skipped . "\n";
 print "found:\t" . $positive . "\n";
 print "not found:\t" . $negative . "\n";
 

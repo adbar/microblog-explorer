@@ -13,9 +13,7 @@ import socket
 from urllib2 import Request, urlopen, URLError, quote, unquote
 from StringIO import StringIO
 import gzip
-#import time
 import optparse
-#import sys
 import urlparse
 import signal
 import sys
@@ -102,13 +100,19 @@ def req(url):
 				gzf = gzip.GzipFile(fileobj=buf)
 				htmlcode = gzf.read()
 			except Exception,e:
-				print (type(e.reason))
+				if hasattr(e, 'reason'):
+					print (e.reason, ': ', url)
+				else:
+					print ("Unclassified error: %r" % e)
 				return 'error' # is it necessary ?
 		elif response.info().gettype() == 'text/html':
 			try:
 				htmlcode = response.read()
 			except Exception,e:
-				print (type(e.reason))
+				if hasattr(e, 'reason'):
+					print (e.reason, ': ', url)
+				else:
+					print ("Unclassified error: %r" % e)
 				return 'error' # is it necessary ?
 		else:
 			print ('no gzip or text/html content: ', url)

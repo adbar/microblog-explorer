@@ -93,3 +93,5 @@ mv $TMP1 TODO
 
 # Backup the final result
 tar -cjf backup.tar.bz2 RESULTS TO-CHECK TODO
+
+# rm TEMP1 ?

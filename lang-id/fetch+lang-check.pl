@@ -35,7 +35,7 @@ use String::CRC32; # on Debian/Ubuntu package libstring-crc32-perl
 # to do :
 # random urls for those which were shortened
 # need links_done ??
-# undef links that are already processed
+# hash + undef links that are already processed ?
 # pack crc ?
 # change 'hostnames' name
 
@@ -53,9 +53,10 @@ sub usage {
 	print "Usage: perl XX.pl [--help|-h] [--putip|-ip] X.X.X.X [--port|-p] [--timeout|-t] [--seen|-s] [--fileprefix|-fp] prefix [--filesuffix|-fs] suffix [--all|-a] [--links|-l] number [--hostreduce|-hr] \n\n";
 	print "putip : ip of the langid server (default : 127.0.0.1)\n";
 	print "port : port of the langid server (default : 9008)\n";
-	print "putip : ip of the langid server (default : 127.0.0.1)\n";
+	print "timeout : timeout limit for the requests (default: 10)\n";
 	print "seen : file containing the urls to skip\n";
-	print "prefix : used to identify the files\n";
+	print "prefix : used to identify the files corresponding to different threads\n";
+	print "suffix : all the same\n";
 	print "EITHER --all OR a given number of links\n";
 	print "hostreduce : keep only the hostname & evt. a random full URL for each hostname\n\n";
 	exit;
@@ -111,7 +112,7 @@ if (defined $filesuffix) {
 
 # Process the 'seen' file, if any
 if ((defined $seen) && (-e $seen)) {
-	open (my $ldone, '<', $seen);
+	open (my $ldone, '<', $seen) or die "Cannot open LINKS-DONE file : $!\n";;
 	while (<$ldone>) {
 		chomp;
 		$_ =~ s/^http:\/\///; # spare memory space
@@ -139,7 +140,7 @@ if ((defined $seen) && (-e $seen)) {
 
 # Process the 'todo' file (required)
 if (-e $todo) {
-	open (my $ltodo, '<', $todo);
+	open (my $ltodo, '<', $todo) or die "Cannot open LINKS-TODO file : $!\n";;
 	my ($identifier, @tempurls);
 	while (<$ltodo>) {
 		chomp;
@@ -329,6 +330,7 @@ foreach $url (@redirect_candidates) {
 
 # SUBROUTINES
 
+# Necessary if there are several threads
 sub lock_and_write {
 	my ($fh, $text, $filetype) = @_;
 	chomp ($text);
@@ -500,6 +502,9 @@ print $ltodo join("\n", @redirect_candidates);
 close($ltodo);
 
 my $total = $url_count + $redir_count;
+if (defined $filesuffix) {
+	print "### thread number:\t" . $filesuffix . "\n";
+}
 print "seen:\t\t" . $total . "\n";
 print "redirected:\t" . $redir_count . "\n";
 print "tried:\t\t" . $stack . "\n";
