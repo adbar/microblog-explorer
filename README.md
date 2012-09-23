@@ -73,6 +73,8 @@ Usage examples :
 	python reddit-crawl.py -l dkpol+denmark		# using a multi-reddit expression
 	python reddit-crawl.py -l da			# the same, using a language code
 
+Prints a report on STDOUT and creates X files.
+
 
 Language identification
 -----------------------
@@ -80,17 +82,61 @@ Language identification
 There are two scripts in the directory named 'langid' which are to be used with the [langid.py language identification system](https://github.com/saffsd/langid.py).
 
 
-### Download and language check
-
-This Perl script fetches the webpages of a list, strips the HTML code, sends raw text to a server instance of langid.py and retrieves the answer.
+### [langid.py](https://github.com/saffsd/langid.py) server
 
 The langid.py server can be started as follows :
 
     python langid.py -s
+    python langid.py -s --host=localhost &> langid-log &	# as a background process on localhost
 
+
+### Check a list of URLs for redirections
+
+Send a HTTP HEAD request to see where the link is going.
+
+    perl resolve-redirects.pl --timeout 10 --all FILE
+    perl resolve-redirects.pl -h			# display all the options
+
+Prints a report on STDOUT and creates X files.
+
+
+### Clean the list of URLs
+
+Removes non-http protocols, images, PDFs, audio and video files, ad banners, feeds :
+
+    python clean_urls.py -i INPUTFILE -o OUTPUTFILE
+    python clean_urls.py -h				# for help
+
+
+### Fetch the pages, clean them and send them as a PUT request to the server
+
+This Perl script fetches the webpages of a list, strips the HTML code, sends raw text to a server instance of langid.py and retrieves the answer.
 Usage : takes a number of links to analyze as argument. Example (provided there is a list named `LINKS_TODO`) :
 
     perl fetch+lang-check.pl 200
+    perl fetch+lang-check.pl -h		# display all the options
+
+Prints a report on STDOUT and creates X files.
+
+Sampling approach (option --hostreduce) : to be explained.
+
+
+### Multi-threading
+
+Parallel threads are implemented, the bash script starts several instances of the scripts, merges and saves the results.
+
+Following syntax : filename + number of links to check + number of threads
+
+Resolve redirections :
+
+     bash rr-threads.sh FILE 100000 10 &> rr.log &
+
+Fetch and send the pages to lang-id :
+Expects the langid-server to run on port 9008.
+Expects the clean_urls.py pythons script (in order to avoid crawler traps).
+ + results already collected (not required)
+
+    (bash threads.sh FILE 100000 8 &> fs.log &)		# as a detached background process
 
 
 ### Get statistics and interesting links
@@ -99,13 +145,13 @@ The list written by the Perl script can be examined using a Python script which 
 
 Usage: lang-stats+selection.py [options]
 
-Getting the statistics of the list named `RESULTS_langid` :
+Getting the statistics of a list named `RESULTS_langid` :
 
     python lang-stats+selection.py --input-file=RESULTS_langid
 
-Getting the statistics as well as a prompt of the languages to select and then store the whole in a file :
+Getting the statistics as well as a prompt of the languages to select and store them in a file :
 
-    python lang-stats+selection.py -l --input-file=RESULTS_langid --output-file=stats-and-links
+    python lang-stats+selection.py -l --input-file=... --output-file=...
 
 
 Related Projects

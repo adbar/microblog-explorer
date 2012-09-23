@@ -5,9 +5,6 @@
 ###	Copyright (C) Adrien Barbaresi, 2012.
 ###	The Microblog-Explorer is freely available under the GNU GPL v3 license (http://www.gnu.org/licenses/gpl.html).
 
-# This script is to be used in combination with a language identification system (https://github.com/saffsd/langid.py) running as a server on port 9008 : python langid.py -s
-# Please adjust the host parameter to your configuration (see below).
-
 
 use strict;
 use warnings;
@@ -30,9 +27,12 @@ use Try::Tiny; # on Debian/Ubuntu package libtry-tiny-perl
 use String::CRC32; # on Debian/Ubuntu package libstring-crc32-perl
 
 
-## Issues to file : languages to exclude
+# IMPORTANT : to avoid possible traps, use the clean_urls python script before this one to filter the list and spare memory (NB: the bash script does so).
+# This script is to be used in combination with a language identification system (https://github.com/saffsd/langid.py) normally running as a server on port 9008 : python langid.py -s
+# Please adjust the host and port parameters to your configuration (see below).
 
-# to do :
+
+# TODO :
 # random urls for those which were shortened
 # need links_done ??
 # hash + undef links that are already processed ?
@@ -147,10 +147,6 @@ if (-e $todo) {
 		unless ($_ =~ m/^http/) {
 		$_ = "http://" . $_; # consequence of sparing memory space in the "todo" files
 		}
-		# just in case : avoid possible traps
-		next if (length($_) <= 10);
-		next if ( ($_ =~ m/\.ogg$|\.mp3$|\.avi$|\.mp4$/) || ($_ =~ m/\.jpg$|\.JPG$|\.jpeg$|\.png$|\.gif$/) );
-		next if ($_ =~ m/\.pdf$/);
 
 		# url splitting
 		($scheme, $auth, $path, $query, $frag) = uri_split($_);
