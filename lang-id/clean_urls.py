@@ -11,7 +11,7 @@ import optparse
 import sys
 
 # TODO:
-## split lines of the kind '.htmlhttp://' 
+## split lines of the kind '.htmlhttp://'
 
 
 # Parse arguments and options
@@ -29,9 +29,11 @@ if options.inputfile is None or options.outputfile is None:
 
 # Main regexes
 protocol = re.compile(r'^http')
-mediafinal = re.compile(r'\.jpg$|\.JPG$|\.jpeg$|\.png$|\.gif$|\.pdf$|\.ogg$|\.mp3$|\.avi$|\.mp4$')
-mediaquery1 = re.compile(r'\.jpg\?|\.JPG\?|\.jpeg\?|\.png\?|\.gif\?|\.pdf\?|\.ogg\?|\.mp3\?|\.avi\?|\.mp4\?')
-mediaquery2 = re.compile(r'\.jpg\&|\.JPG\&|\.jpeg\&|\.png\&|\.gif\&|\.pdf\&|\.ogg\&|\.mp3\&|\.avi\&|\.mp4\&')
+notsuited = re.compile(r'^http://add?\.|^http://banner\.|feed$')
+mediafinal = re.compile(r'\.jpg$|\.jpeg$|\.png$|\.gif$|\.pdf$|\.ogg$|\.mp3$|\.avi$|\.mp4$|\.css$', re.IGNORECASE)
+mediaquery1 = re.compile(r'\.jpg\?|\.jpeg\?|\.png\?|\.gif\?|\.pdf\?|\.ogg\?|\.mp3\?|\.avi\?|\.mp4\?', re.IGNORECASE)
+mediaquery2 = re.compile(r'\.jpg&|\.jpeg&|\.png&|\.gif&|\.pdf&|\.ogg&|\.mp3&|\.avi&|\.mp4&', re.IGNORECASE) 
+
 
 
 # Open source and destination files
@@ -49,13 +51,15 @@ for candidate in sourcefile:
 	candidate = candidate.rstrip()
 	# regexes tests : a bit heavy...
 	match1 = protocol.search(candidate)
-	if match1:
+	if match1 and len(candidate) > 10:
 		match2 = mediafinal.search(candidate)
 		if not match2:
-			match3 = mediaquery1.search(candidate)
-			match4 = mediaquery2.search(candidate)
-			if not match3 and not match4:
-				destfile.write(candidate + "\n")
+			match3 = notsuited.search(candidate)
+			if not match3:
+				match4 = mediaquery1.search(candidate)
+				match5 = mediaquery2.search(candidate)
+				if not match4 and not match5:
+					destfile.write(candidate + "\n")
 
 sourcefile.close()
 destfile.close()

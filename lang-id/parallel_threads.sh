@@ -90,10 +90,10 @@ do
 	### starting the threads
 	if (($# == 4))
 	then
-		perl fetch-send-furl.pl -t 15 --seen $4 --hostreduce --all --filesuffix $i $f &
+		perl fetch+lang-check.pl -t 15 --seen $4 --hostreduce --all --filesuffix $i $f &
 		#perl fetch-send-furl.pl --port 9009 --seen $4 --hostreduce --all --filesuffix $i $f &
 	else
-		perl fetch-send-furl.pl -t 15 --hostreduce --all --filesuffix $i $f &
+		perl fetch+lang-check.pl -t 15 --hostreduce --all --filesuffix $i $f &
 		#perl fetch-send-furl.pl --port 9009 --hostreduce --all --filesuffix $i $f &
 	fi
 	sleep 2

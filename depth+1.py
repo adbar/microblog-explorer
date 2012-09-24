@@ -81,7 +81,7 @@ def req(url):
 
 	try:
 		response = urlopen(req, timeout = options.timeout)
-	except URLError, e:
+	except (URLError, BadStatusLine) as e:
 		if hasattr(e, 'reason'):
 			print (e.reason, ': ', url)
 		elif hasattr(e, 'code'):

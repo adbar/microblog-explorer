@@ -6,9 +6,20 @@ The Microblog-Explorer project is about gathering links from social networks to 
 
 Other interests could be text analysis or network visualization, but they are not the priority right now.
 
-The scripts are under heavy development, they work but are not optimized yet. They are tested on UNIX (Debian flavours), they should work on other UNIX-like systems provided the modules needed are installed.
+The scripts are under heavy development, they work but are not optimized yet. They are tested on UNIX (Debian flavors), they should work on other UNIX-like systems provided the modules needed are installed.
 
 The links that are obviously pointing at images or videos are filtered out.
+
+
+Installation
+------------
+
+Recommandations for the Debian/Ubuntu systems (probably useful for other Linux distributions) :
+
+Install or make sure you have following packages installed : libtry-tiny-perl libstring-crc32-perl libhtml-strip-perl libhtml-clean-perl
+
+Open the CPAN console (e.g. sudo cpan) and say 'install Furl', as this Perl module is not installed by default.
+
 
 
 Identi.ca
@@ -129,7 +140,7 @@ Following syntax : filename + number of links to check + number of threads
 
 Resolve redirections :
 
-     bash rr-threads.sh FILE 100000 10 &> rr.log &
+     bash res-red-threads.sh FILE 100000 10 &> rr.log &
 
 Fetch and send the pages to lang-id :
 Expects the langid-server to run on port 9008.

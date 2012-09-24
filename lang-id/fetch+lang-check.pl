@@ -453,7 +453,10 @@ sub fetch_url {
 		if ($confidence < 0.5) {
 			$suspicious = 1;
 		}
-		elsif ( ($lang eq "zh") || ($lang eq "qu") || ($lang eq "ps") || ($lang eq "la") || ($lang eq "lo") || ($lang eq "an") ) { # am, kw, ...
+		elsif ( ($lang eq "qu") || ($lang eq "ps") || ($lang eq "la") || ($lang eq "lo") || ($lang eq "an") || ($lang eq "am") || ($lang eq "kw") ) {
+			$suspicious = 1;
+		}
+		elsif ( ($lang eq "zh") && ($confidence < 0.9) ) {
 			$suspicious = 1;
 		}
 		elsif ( ($lang eq "el") && ($auth !~ m/\.gr$/) && ($confidence != 1) ) {
