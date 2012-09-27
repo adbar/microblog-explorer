@@ -19,6 +19,7 @@ import time
 import optparse
 import sys
 import codecs
+from urlparse import urlparse
 
 from enchant.checker import SpellChecker # see package 'python-enchant' on Debian/Ubuntu
 spellcheck = SpellChecker("en_US")
@@ -29,22 +30,29 @@ bodies = defaultdict(int)
 
 
 # TODO:
-# 3rd level : followers/following
 # number of requests
 # blogspot filter ?
-# if various domain names then further
+# interesting tld-extractor : https://github.com/john-kurkowski/tldextract
+# timeout
+# reduce code ('sleep' in 'fetch', concats, functions)
+# todo/done ?
 
 
 ## Parse arguments and options
 parser = optparse.OptionParser(usage='usage: %prog [options] arguments')
-parser.add_option("-s", "--simple", dest="simple", action="store_true", default=False, help="simple crawl (just the public feed)")
-parser.add_option("-u", "--users", dest="users", action="store_true", default=False, help="users crawl (without public feed)")
+parser.add_option("-s", "--simple", dest="simple", action="store_true", default=False, help="simple crawl ONLY (just the public feed)")
+parser.add_option("-u", "--users", dest="users", action="store_true", default=False, help="users crawl ONLY (without public feed)")
+parser.add_option("-f", "--friends", dest="friends", action="store_true", default=False, help="friends crawl")
+parser.add_option("-d", "--deep", dest="deep", action="store_true", default=False, help="smart deep crawl")
+# parser.add_option("-r", "--requests", dest="requests", help="max requests")
 options, args = parser.parse_args()
 
 
 # nothing indicated in the API documentation : http://friendfeed.com/api/documentation
 # 2 secs seem to be close to the limit though
 sleeptime = 2.25
+timelimit = 12
+total_requests = 0
 
 ## FILTERS
 # comments
@@ -89,14 +97,19 @@ def writefile(filename, listname):
 
 # Fetch URL
 def req(url):
+    global total_requests
+    total_requests += 1
     req = Request(url)
     req.add_header('Accept-encoding', 'gzip')
     req.add_header('User-agent', 'Microblog-Explorer/0.2')
 
     try:
-        response = urlopen(req)
-    except (URLError, BadStatusLine) as e:
-        print ("Error: %r" % e)
+        response = urlopen(req, timeout = timelimit)
+    except (URLError) as e:
+        try:
+            print ("Error: %r" % e, url)
+        except NameError:
+            print ('Error')
         return 'error'
 
     if response.info().get('Content-Encoding') == 'gzip':
@@ -118,6 +131,7 @@ def req(url):
 
 # Find interesting external links
 def findlinks(code, step):
+    sublinks = list()
     chunks = re.findall(r'{"type":".+?","id":"(.+?)","name":".+?"}', code)
     chunknum = 0
     titles = re.findall(r',{?"body":"(.+?)",', code)
@@ -163,9 +177,14 @@ def findlinks(code, step):
         if flag == 1:
             # find the user behind the tweet
             if step == 1:
-                if chunks[chunknum] not in usersdone:
-                    userstodo.append(chunks[chunknum])
+                try:
+                    chunks[chunknum] = re.sub('".+?$', '', chunks[chunknum])
+                    if chunks[chunknum] not in usersdone: #and not in userstodo:
+                        userstodo.append(chunks[chunknum])
+                except IndexError:
+                    pass
 
+            # Google News etc. URL filter
             urlre = re.search(r'q=(http.+?)&amp', url)
             if urlre:
                 url = urlre.group(1)
@@ -174,9 +193,11 @@ def findlinks(code, step):
                 url = urlre.group(1)
 
             if len(url) > 10:
-                links.append(url)
+                sublinks.append(url)
 
         chunknum += 1
+    sublinks = list(set(sublinks))
+    return sublinks
 
 
 # First pass : crawl of the homepage (public feed), can be skipped with the -u/--users switch
@@ -184,10 +205,10 @@ if options.users is False:
     jsoncode = req('http://friendfeed-api.com/v2/feed/public?maxcomments=0&maxlikes=0&num=100')
     #jsoncode = (jsoncode.decode('utf-8')).encode('utf8')
 
-    findlinks(jsoncode, 1);
+    templinks = findlinks(jsoncode, 1)
+    links.extend(templinks)
 
-
-# Possible second loop : go see the users on the list
+# Possible second loop : go see the users on the list (and eventually their friends)
 
 if options.simple is False:
 
@@ -199,12 +220,57 @@ if options.simple is False:
         time.sleep(sleeptime)
         jsoncode = req('http://friendfeed-api.com/v2/feed/' + userid + '?maxcomments=0&maxlikes=0&num=100')
         if jsoncode is not 'error':
-            findlinks(jsoncode, 2);
+            templinks = findlinks(jsoncode, 2)
+            links.extend(templinks)
+            # smart deep crawl
+            if options.deep is True:
+                hostnames = defaultdict(int)
+                for link in templinks:
+                    hostname = urlparse(link).netloc
+                    hostnames[hostname] += 1
+                try:
+                    ratio = len(templinks)/len(hostnames)
+                    if ratio >= 5: # could also be 7 or 10
+                        print (ratio)
+                        time.sleep(sleeptime)
+                        jsoncode = req('http://friendfeed-api.com/v2/feed/' + userid + '?maxcomments=0&maxlikes=0&start=100&num=100')
+                        if jsoncode is not 'error':
+                            templinks = findlinks(jsoncode, 2)
+                            links.extend(templinks)
+                except ZeroDivisionError:
+                    pass
+                
             #usersdone.append(userid)
 
+	# crawl the 'friends' page
+        if options.friends is True:
+            time.sleep(sleeptime)
+            jsoncode = req('http://friendfeed-api.com/v2/feed/' + userid + '/friends?maxcomments=0&maxlikes=0&num=100')
+            if jsoncode is not 'error':
+                templinks = findlinks(jsoncode, 1)
+                links.extend(templinks)
+                # smart deep crawl
+                if options.deep is True:
+                    hostnames = defaultdict(int)
+                    for link in templinks:
+                        hostname = urlparse(link).netloc
+                        hostnames[hostname] += 1
+                    try:
+                        ratio = len(templinks)/len(hostnames)
+                        if ratio >= 5: # could also be 7 or 10
+                            print (ratio)
+                            time.sleep(sleeptime)
+                            jsoncode = req('http://friendfeed-api.com/v2/feed/' + userid + '?maxcomments=0&maxlikes=0&start=100&num=100')
+                            if jsoncode is not 'error':
+                                templinks = findlinks(jsoncode, 2)
+                                links.extend(templinks)
+                    except ZeroDivisionError:
+                        pass
 
 
-users = list(set(userstodo))
+# Write all the logs and files
+print ('Requests:\t', total_requests)
+userstodo = list(set(userstodo))
 print ('New users:\t', len(userstodo))
 writefile('users', userstodo)
 rejectlist = list(set(rejectlist))
