@@ -5,6 +5,8 @@
 ###	Copyright (C) Adrien Barbaresi, 2012.
 ###	The Microblog-Explorer is freely available under the GNU GPL v3 license (http://www.gnu.org/licenses/gpl.html).
 
+### The official API module for Python is much more complete : https://code.google.com/p/friendfeed-api/
+
 
 from __future__ import print_function
 from __future__ import division
@@ -25,8 +27,24 @@ langcheck = 0
 from collections import defaultdict
 bodies = defaultdict(int)
 
-# no crawling limit indicated in the API documentation : http://friendfeed.com/api/documentation
-sleeptime = 2.5
+
+# TODO:
+# 3rd level : followers/following
+# number of requests
+# blogspot filter ?
+# if various domain names then further
+
+
+## Parse arguments and options
+parser = optparse.OptionParser(usage='usage: %prog [options] arguments')
+parser.add_option("-s", "--simple", dest="simple", action="store_true", default=False, help="simple crawl (just the public feed)")
+parser.add_option("-u", "--users", dest="users", action="store_true", default=False, help="users crawl (without public feed)")
+options, args = parser.parse_args()
+
+
+# nothing indicated in the API documentation : http://friendfeed.com/api/documentation
+# 2 secs seem to be close to the limit though
+sleeptime = 2.25
 
 ## FILTERS
 # comments
@@ -36,16 +54,19 @@ spam = re.compile(r'viagra|^fwd|gambling|casino|loans|cialis|price|shop', re.IGN
 # internal links (no used)
 interntest = re.compile(r'http://friendfeed.com/')
 
+userstodo = list()
 links = list()
 rejectlist = list()
 
 try:
     usersfile = open('users', 'r')
-    users = usersfile.readlines()
+    usersdone = usersfile.readlines()
     usersfile.close()
 except IOError:
-    users = list()
-
+    if options.users is True:
+        sys.exit('"users" file mandatory with the -u/--users switch')
+    else:
+        usersdone = list()
 
 
 # time the whole script
@@ -55,11 +76,11 @@ start_time = time.time()
 
 ### SUBS
 
-# write files (and not append)
+# write files
 def writefile(filename, listname):
     #filename = options.lcode + '_' + filename
     try:
-        out = open(filename, 'w')
+        out = open(filename, 'a')
     except IOError:
         sys.exit ("could not open output file")
     for link in listname:
@@ -141,12 +162,9 @@ def findlinks(code, step):
 
         if flag == 1:
             # find the user behind the tweet
-            if step is '1ststep':
-                users.append(chunks[chunknum])
-            #try:
-            #    print (body)
-            #except UnicodeEncodeError:
-            #    print ("body print problem")
+            if step == 1:
+                if chunks[chunknum] not in usersdone:
+                    userstodo.append(chunks[chunknum])
 
             urlre = re.search(r'q=(http.+?)&amp', url)
             if urlre:
@@ -157,46 +175,43 @@ def findlinks(code, step):
 
             if len(url) > 10:
                 links.append(url)
-        #if not commentsre:
-            #chunknum += 1
+
         chunknum += 1
 
 
+# First pass : crawl of the homepage (public feed), can be skipped with the -u/--users switch
+if options.users is False:
+    jsoncode = req('http://friendfeed-api.com/v2/feed/public?maxcomments=0&maxlikes=0&num=100')
+    #jsoncode = (jsoncode.decode('utf-8')).encode('utf8')
 
-jsoncode = req('http://friendfeed-api.com/v2/feed/public?maxcomments=0&maxlikes=0&num=100')
-#jsoncode = (jsoncode.decode('utf-8')).encode('utf8')
-
-
-findlinks(jsoncode, '1ststep');
-
-
-users = list(set(users))
-links = list(set(links))
-rejectlist = list(set(rejectlist))
+    findlinks(jsoncode, 1);
 
 
+# Possible second loop : go see the users on the list
 
-# Go see the users on the list
+if options.simple is False:
 
-for userid in users:
-    time.sleep(sleeptime)
-    jsoncode = req('http://friendfeed-api.com/v2/feed/' + userid + '?maxcomments=0&maxlikes=0&num=100')
-    if jsoncode is not 'error':
-        findlinks(jsoncode, '2ndstep');
-#http://friendfeed-api.com/v2/feed/ramelangidney?maxcomments=0&maxlikes=0&start=0&num=100 + start=100 etc.
+    userstodo = list(set(userstodo))
+    links = list(set(links))
+    rejectlist = list(set(rejectlist))
+
+    for userid in userstodo:
+        time.sleep(sleeptime)
+        jsoncode = req('http://friendfeed-api.com/v2/feed/' + userid + '?maxcomments=0&maxlikes=0&num=100')
+        if jsoncode is not 'error':
+            findlinks(jsoncode, 2);
+            #usersdone.append(userid)
 
 
 
-users = list(set(users))
-print ('Users:\t', len(users))
-writefile('users', users)
-links = list(set(links))
-print ('Links:\t', len(links))
-writefile('links', links)
+users = list(set(userstodo))
+print ('New users:\t', len(userstodo))
+writefile('users', userstodo)
 rejectlist = list(set(rejectlist))
 print ('Rejected:\t', len(rejectlist))
 writefile('rejected', rejectlist)
-
-
+links = list(set(links))
+print ('Links:\t\t', len(links))
+writefile('links', links)
 
 print ('Execution time (secs): {0:.2f}' . format(time.time() - start_time))
