@@ -8,11 +8,15 @@
 
 use strict;
 use warnings;
-# use utf8; use open ':encoding(utf8)'; doesn't seem to be necessary here
 use threads;
 use threads::shared;
 use Time::HiRes qw( time sleep );
-use Reddit_Fetch_Extract qw( fetch extract );
+use Identica_Fetch_Extract qw( fetch extract );
+
+
+## EXAMPLE:
+# (perl long-distance-miner.pl 50 &> ld-log &)
+
 
 ## Expects a number as argument
 die 'Usage: perl XX.pl [number of links to scan]' if (scalar (@ARGV) != 1);
@@ -164,17 +168,9 @@ my @users_todo = (@users, @ushared);
 print "total int:\t" . scalar (@internal) . "\n"; # uninitialized problem : empty internal list ?
 print "total ext:\t" . scalar (@external) . "\t(uniqueness ratio: " . sprintf("%.1f", $exttotal/scalar (@external)) . ")\n";
 
-open (my $resultint, '>>', 'ld-int');
-print $resultint join("\n", @internal);
-close($resultint);
-
-open (my $resultext, '>>', 'ld-ext');
-print $resultext join("\n", @external);
-close($resultext);
-
-open (my $errurls, '>>', 'ld-errurls');
-print $errurls join("\n", @errurls);
-close($errurls);
+writefile('ld-int', '>>', \@internal);
+writefile('ld-ext', '>>', \@external);
+writefile('ld-errurls', '>>', \@errurls);
 
 open (my $usdone, '>>', $usersdone);
 print $usdone join("\n", @done);

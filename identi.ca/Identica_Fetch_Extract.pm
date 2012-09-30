@@ -14,7 +14,7 @@ require Compress::Zlib; # faster file transmission
 use URI::Split qw(uri_split uri_join);
 # use Carp; for detailed error messages
 
-package Reddit_Fetch_Extract;
+package Identica_Fetch_Extract;
 # export two functions/subroutines
 use Exporter;
 our @ISA = ('Exporter');
@@ -59,7 +59,7 @@ sub extract {
 					unless ($1 =~ m/\.jpg$|\.JPG$|\.jpeg$|\.png$|\.gif$|\.pdf$/) {
 					unless ($1 =~ m/\.ogg$|\.mp3$|\.avi$|\.mp4$/) {
 						my $temp = $1;
-						# suppression of bad hostnames and eventual query parameters
+						# delete bad hostnames and eventual query parameters :
 						my ($scheme, $auth, $path, $query, $frag) = URI::Split::uri_split($temp);
 						{ no warnings 'uninitialized';
 							next if (length($auth) < 5);

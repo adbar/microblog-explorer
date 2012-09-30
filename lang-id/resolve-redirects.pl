@@ -171,6 +171,12 @@ sub lock_and_write {
 	return;
 }
 
+
+# destroy the TODO file to show the task is done
+open (my $ltodo2, '>', $todo);
+close($ltodo);
+
+
 if (defined $filesuffix) {
 	print "### thread number:\t" . $filesuffix . "\n";
 }

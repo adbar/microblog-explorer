@@ -33,11 +33,13 @@ use String::CRC32; # on Debian/Ubuntu package libstring-crc32-perl
 
 
 # TODO :
-# random urls for those which were shortened
-# need links_done ??
 # hash + undef links that are already processed ?
-# pack crc ?
+# pack crc
 # change 'hostnames' name
+# test path final '/' issue
+# clear redirect candidates ?
+# LWP switch if no Furl ?
+# clear redirect status
 
 
 # command-line options
@@ -115,8 +117,8 @@ if ((defined $seen) && (-e $seen)) {
 	open (my $ldone, '<', $seen) or die "Cannot open LINKS-DONE file : $!\n";;
 	while (<$ldone>) {
 		chomp;
-		$_ =~ s/^http:\/\///; # spare memory space
-		$_ =~ s/\/$//; # avoid duplicates like www.mestys-starec.eu and www.mestys-starec.eu/
+		$_ =~ s/^http:\/\///;	# spare memory space
+		$_ =~ s/\/$//;			# avoid duplicates like www.mestys-starec.eu and www.mestys-starec.eu/
 		if ($_ =~ m/\t/) {
 			my @temp = split ("\t", $_);
 			# two possibilities according to the 'host-reduce' option
@@ -130,7 +132,8 @@ if ((defined $seen) && (-e $seen)) {
 				$hostnames{$crc}++;
 			}
 		}
-		else { # if it's just a 'simple' list of urls
+		# if it's just a 'simple' list of urls
+		else {
 			$crc = crc32($_);
 			$hostnames{$crc}++;
 		}
@@ -456,7 +459,7 @@ sub fetch_url {
 		elsif ( ($lang eq "qu") || ($lang eq "ps") || ($lang eq "la") || ($lang eq "lo") || ($lang eq "an") || ($lang eq "am") || ($lang eq "kw") ) {
 			$suspicious = 1;
 		}
-		elsif ( ($lang eq "zh") && ($confidence < 0.9) ) {
+		elsif ( $lang eq "zh" ) { # sadly, it has to be that way...
 			$suspicious = 1;
 		}
 		elsif ( ($lang eq "el") && ($auth !~ m/\.gr$/) && ($confidence != 1) ) {

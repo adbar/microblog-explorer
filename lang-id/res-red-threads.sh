@@ -5,6 +5,7 @@
 ###	Copyright (C) Adrien Barbaresi, 2012.
 ###	The Microblog-Explorer is freely available under the GNU GPL v3 license (http://www.gnu.org/licenses/gpl.html).
 
+# example  : (bash res-red-threads.sh backup_links 500000 10 &> rr.log &)
 
 # TODO:
 ## advanced divide and conquer and/or URL pool
@@ -59,11 +60,11 @@ done
 wait
 
 # Merge the files
-#cat LINKS-TODO.* > TODO # not necessary
+cat LINKS-TODO.* > RED-LINKS-TODO
 rm LINKS-TODO.*
 cat BAD-HOSTS.* >> BAD-HOSTS
 rm BAD-HOSTS.*
-cat OTHERS.* > LINKS-TODO-redchecked
+cat OTHERS.* >> LINKS-TODO-redchecked
 rm OTHERS.*
 cat REDIRECTS.* >> LINKS-TODO-redchecked
 rm REDIRECTS.*
@@ -84,4 +85,4 @@ sort LINKS-TODO-redchecked | uniq > $TMP1
 mv $TMP1 LINKS-TODO-redchecked
 
 # Backup the final result
-tar -cjf red-backup.tar.bz2 BAD-HOSTS LINKS-TODO-redchecked red-ERRORS
+tar -cjf backup-redirects.tar.bz2 BAD-HOSTS LINKS-TODO-redchecked red-ERRORS RED-LINKS-TODO

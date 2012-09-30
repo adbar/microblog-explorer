@@ -14,7 +14,10 @@
 #(python langid.py -s --host=localhost --port=9009 -l en,cs,de,sk,fr,pl,it,es,ja,nl,ru,he,hu,sl,hr,pt,sv,fi,et,no,lt,da,ro,bs,tr,ar,ka,ca,el,uk,is,bg,lv,vi,sw,sr,eo,nb,ga,eu &> lang-id.log &)
 
 
+#####	RESOLVE THE SHORT URLS BEFORE EXECUTING THIS SCRIPT !!!
+
 # TODO:
+## check URLs to check... and store them in 'RESULTS'
 ## store the results of clean_urls.py in a different file
 ## advanced divide and conquer and/or URL pool
 ### pool file = one half of the links, if n > 100, take the tenth of the list, export thread number
@@ -119,6 +122,13 @@ mv $TMP1 RESULTS
 
 sort TO-CHECK | uniq > $TMP1
 mv $TMP1 TO-CHECK
+
+if (( $listfile == "TEMP1" ))
+then
+	tailpart=`expr $total_lines - $req`
+	tail -${tailpart} ${listfile} >> TODO
+	rm TEMP1
+fi
 
 sort TODO | uniq > $TMP1
 mv $TMP1 TODO

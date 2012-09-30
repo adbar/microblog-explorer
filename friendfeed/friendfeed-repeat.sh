@@ -1,7 +1,6 @@
 #!/bin/bash
 
 
-
 # Create a temporary file
 tempfile() {
     tempprefix=$(basename "$0")
@@ -12,13 +11,17 @@ trap 'rm -f $TMP1' EXIT
 
 
 x=1
-
-
 # Main loop
-while (($x <= 100))
+while (($x <= 20))
 do
-   python friendfeed-test.py
-   sleep 2
+   python friendfeed-test.py -dv &
+   sleep 10
+   python friendfeed-test.py -dv &
+   sleep 10
+   python friendfeed-test.py -dv &
+   sleep 10
+   python friendfeed-test.py -dv &
+   wait
    let x++
 done
 
@@ -26,23 +29,23 @@ done
 # Finalization
 echo 'Finalizing...'
 
-lines_number=$(cat users | wc -l)
+lines_number=$(cat ff-usersdone | wc -l)
 echo -e "Users before uniq\t= ${lines_number}"
-sort users | uniq > $TMP1
-cp $TMP1 users
-lines_number=$(cat users | wc -l)
+sort ff-usersdone | uniq > $TMP1
+cp $TMP1 ff-usersdone
+lines_number=$(cat ff-usersdone | wc -l)
 echo -e "Users after uniq\t= ${lines_number}"
 
-lines_number=$(cat links | wc -l)
+lines_number=$(cat ff-links | wc -l)
 echo -e "Links before uniq\t= ${lines_number}"
-sort links | uniq > $TMP1
-cp $TMP1 links
-lines_number=$(cat links | wc -l)
+sort ff-links | uniq > $TMP1
+cp $TMP1 ff-links
+lines_number=$(cat ff-links | wc -l)
 echo -e "Links after uniq\t= ${lines_number}"
 
-lines_number=$(cat rejected | wc -l)
+lines_number=$(cat ff-rejected | wc -l)
 echo -e "Rejected before uniq\t= ${lines_number}"
-sort rejected | uniq > $TMP1
-cp $TMP1 rejected
-lines_number=$(cat rejected | wc -l)
+sort ff-rejected | uniq > $TMP1
+cp $TMP1 ff-rejected
+lines_number=$(cat ff-rejected | wc -l)
 echo -e "Rejected after uniq\t= ${lines_number}"

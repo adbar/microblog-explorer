@@ -18,7 +18,6 @@ import gzip
 import time
 import optparse
 import sys
-import codecs
 from urlparse import urlparse
 import atexit
 import os
@@ -39,6 +38,7 @@ bodies = defaultdict(int)
 # continue / break ?
 # comments : program structure
 # -df bug ?
+# reziubqzecdpoin... filter
 
 
 ## Parse arguments and options
@@ -51,26 +51,7 @@ parser.add_option("-r", "--requests", dest="requests", help="max requests")
 parser.add_option("-v", "--verbose", dest="verbose", action="store_true", default=False, help="debug mode (body and ids info)")
 options, args = parser.parse_args()
 
-
-# nothing indicated in the API documentation : http://friendfeed.com/api/documentation
-# 2 secs seem to be close to the limit though
-sleeptime = 2.25
-timelimit = 12
-total_requests = 0
-
-
-## FILTERS
-# comments
-reject = re.compile(r'"[0-9]+ comments?"')
-# spam (small list, to be updated)
-spam = re.compile(r'viagra|^fwd|gambling|casino|loans|cialis|price|shop|buyonlinetab|buytabonline|streaming', re.IGNORECASE) # also in urls ?
-# internal links (no used)
-interntest = re.compile(r'http://friendfeed.com/')
-
-
-usersdone, userstodo, links, rejectlist, templinks = ([] for i in range(5))
-
-
+# Test/open file
 try:
     usersfile = open('users', 'r')
     usersdone = usersfile.readlines()
@@ -84,11 +65,32 @@ except IOError:
         pass
 
 
+
+## INITIALIZE
+
 # time the whole script
 start_time = time.time()
 
+# nothing indicated in the API documentation : http://friendfeed.com/api/documentation
+# 2 secs seem to be close to the limit though
+sleeptime = 2
+timelimit = 12
+total_requests = 0
+usersdone, userstodo, links, rejectlist, templinks = ([] for i in range(5))
 
-### SUBS
+
+## FILTERS
+
+# comments
+reject = re.compile(r'"[0-9]+ comments?"')
+# spam (small list, to be updated)
+# http://www.twithawk.com/faq/stopwords
+spam = re.compile(r'viagra|^fwd|gambling|casino|loans|cialis|price|shop|buyonlinetab|buytabonline|streaming|store|download', re.IGNORECASE) # also in urls ?
+# internal links (no used)
+interntest = re.compile(r'http://friendfeed.com/')
+
+
+######################		FUNCTIONS
 
 
 # write/append to files
@@ -143,10 +145,11 @@ def req(url):
 def findlinks(code, step):
     sublinks = list()
     subdict = defaultdict(int)
-    testlist = list()
+    global userstodo
+    global usersdone
 
     ## 'If I strip everything I don't want, I'll be able to fetch what I want'...
-    ## To be replaced by a proper parser ?
+    ## This is ugly : to be replaced by a 'real' parser ?
     code = re.sub(r'^.+?\[', '', code)
     code = re.sub(r'"comments":\[.+?\],', '', code)
     code = re.sub(r'"thumbnails":\[.+?\],', '', code)
@@ -181,9 +184,7 @@ def findlinks(code, step):
         body = body.rstrip()
 
         # check for spam and reject
-        commentsre = reject.search(body)
-        spamre = spam.search(body)
-        if not commentsre and not spamre:
+        if not reject.search(body) and not spam.search(body):
 
             # check for URL in body
             urlre = re.search(r'href=\\"(http://.+?)\\"', body)
@@ -207,8 +208,7 @@ def findlinks(code, step):
 		# check for 'new' body
                 if not body in bodies:
                     bodies[body] = 1
-                    internre = interntest.search(url)
-                    if internre:
+                    if interntest.search(url):
                         pass # TODO
                     else:
 
@@ -234,6 +234,7 @@ def findlinks(code, step):
                 else:
                     bodies[body] += 1
 
+        # if the link seems promising...
         if flag == 1:
 
             # Google News etc. URL filter # there might be a better way to perform the substitutions
@@ -303,6 +304,9 @@ def uniqlists():
     # usersdone, userstodo, links, rejectlist = ([] for i in range(4)) ?
 
 
+######################		END OF FUNCTIONS
+
+
 ### LOOPS
 
 # First pass : crawl of the homepage (public feed), skipped with the -u/--users switch
@@ -323,33 +327,25 @@ if options.simple is False:
             break
         fetch_analyze(str(userid) + '?maxcomments=0&maxlikes=0&num=100', 2)
         usersdone.append(userid)
-        #if jsoncode is not 'error':
-        #    templinks = findlinks(jsoncode, 2)
-        #    links.extend(templinks)
 
 	# smart deep crawl
         if options.deep is True:
-           result = smartdeep()
-           if result == 1:
-               fetch_analyze(str(userid) + '?maxcomments=0&maxlikes=0&start=100&num=100', 2)
+           for num in range(1, 6):
+               result = smartdeep()
+               if result == 1:
+                   fetch_analyze(str(userid) + '?maxcomments=0&maxlikes=0&start=' + str(num) + '00&num=100', 2)
 
-	# crawl the 'friends' page
-        if options.friends is True:
+    # crawl the 'friends' page
+    if options.friends is True:
+        for userid in userstodo:
             fetch_analyze(str(userid) + '/friends?maxcomments=0&maxlikes=0&num=100', 3)
-            #jsoncode = req('http://friendfeed-api.com/v2/feed/' + userid + '/friends?maxcomments=0&maxlikes=0&num=100')
-            #if jsoncode is not 'error':
-                #templinks = findlinks(jsoncode, 3)
-                #links.extend(templinks)
 
             # smart deep crawl
             if options.deep is True:
-                result = smartdeep()
-                if result == 1:
-                    fetch_analyze(str(userid) + '/friends?maxcomments=0&maxlikes=100&num=100', 3)
-                    #jsoncode = req('http://friendfeed-api.com/v2/feed/' + userid + '/friends?maxcomments=0&maxlikes=0&start=100&num=100')
-                    #if jsoncode is not 'error':
-                        #templinks = findlinks(jsoncode, 3)
-                        #links.extend(templinks)
+               for num in range(1, 6):
+                   result = smartdeep()
+                   if result == 1:
+                       fetch_analyze(str(userid) + '/friends?maxcomments=0&maxlikes=0&start=' + str(num) + '00&num=100', 3)
 
 
 # Write all the logs
@@ -360,7 +356,7 @@ def the_end():
         print ('##########')
     print ('Requests:\t', total_requests)
     print ('Users (total):\t', len(usersdone))
-    writefile('ff-usersdone', usersdone, 'w')
+    writefile('ff-usersdone', usersdone, 'a')
     print ('New users:\t', len(userstodo))
     writefile('ff-userstodo', userstodo, 'a')
     print ('Rejected:\t', len(rejectlist))

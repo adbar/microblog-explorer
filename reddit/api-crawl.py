@@ -70,14 +70,7 @@ sleeptime = 2.1 # crawlers get banned below 2 seconds, see https://github.com/re
 
 toofar = 0
 initial = 1
-extlinks = list()
-userextlinks = list()
-intlinks = list()
-userlinks = list()
-suspicious = list()
-temp1 = list()
-temp2 = list()
-temp3 = list()
+extlinks, userextlinks, intlinks, userlinks, suspicious, temp1, temp2, temp3 = ([] for i in range(8))
 
 #EngStopWords = set(["the", "and", "with", "a", "or", "here", "of", "for"])
 spellcheck = SpellChecker("en_US")
@@ -86,7 +79,7 @@ langcheck = 0
 
 # Select links
 redint = re.compile(r'^http://www.reddit.com')
-mediare = re.compile(r'\.jpg$|\.JPG$|\.jpeg$|\.png$|\.gif$|\.pdf$|\.ogg$|\.mp3$|\.avi$|\.mp4$')
+mediare = re.compile(r'\.jpg$|\.jpeg$|\.png$|\.gif$|\.pdf$|\.ogg$|\.mp3$|\.avi$|\.mp4$', re.IGNORECASE)
 imguryout = re.compile(r'imgur\.com/|youtube\.com/|youtu\.be|google')
 reuser = re.compile(r'^http://www.reddit.com/user/([A-Za-z0-9_-]+)$')
 notintern = re.compile(r'/help/|/message/|/comments/')
@@ -101,15 +94,13 @@ def req(url):
 	req.add_header('User-agent', 'Microblog-Explorer/0.1')
 
 	try:
-		response = urlopen(req)
-	except URLError, e:
-		if hasattr(e, 'reason'):
-			print ('Failed to reach server.')
-			print ('Reason: ', e.reason)
-		elif hasattr(e, 'code'):
-			print ('The server couldn\'t fulfill the request.')
-			print ('Error code: ', e.code)
-		return "error"
+        	response = urlopen(req)
+	except (URLError) as e:
+        	try:
+			print ("Error: %r" % e, url)
+		except NameError:
+			print ('Error')
+		return 'error'
 
 	if response.info().get('Content-Encoding') == 'gzip':
 		buf = StringIO( response.read())
@@ -132,23 +123,17 @@ def newreq(url):
 
 # Find interesting external links
 def findext(code):
-	extl = list()
-	intl = list()
-	rejl = list()
+	extl, intl, rejl = ([] for i in range(3))
 	if langcheck == 1:
 		i = 0
 		titles = re.findall(r'"title": "(.+?)",', code)
 	for link in re.findall(r'"url": "(http://.+?)",', code):
-		match = redint.match(link)
-		if match:
-			match1 = notintern.search(link)
-			if not match1:
+		if redint.match(link):
+			if not notintern.search(link):
 				intl.append(link)
 		else:
-			match1 = imguryout.search(link)
-			if not match1:
-				match2 = mediare.search(link)
-				if not match2:
+			if not imguryout.search(link):
+				if not mediare.search(link):
 					if langcheck == 1:
 						# Check spelling to see if the link text is in English
 						wordcount = len(re.findall(r'\w+', titles[i])) # redundant, see enchant.tokenize

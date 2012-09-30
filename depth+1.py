@@ -17,6 +17,7 @@ import optparse
 import urlparse
 import signal
 import sys
+from random import choice
 
 
 ## TODO
@@ -45,9 +46,12 @@ if options.timeout is None:
 # Initialize
 options.timeout = int(options.timeout)
 alarm_timeout = 20 + options.timeout
-urls = list()
-sampled_urls = list()
-newurls = list()
+urls, sampled_urls, newurls = ([] for i in range(3))
+
+# avoid getting trapped
+mediafinal = re.compile(r'\.jpg$|\.jpeg$|\.png$|\.gif$|\.pdf$|\.ogg$|\.mp3$|\.avi$|\.mp4$', re.IGNORECASE)
+mediaquery = re.compile(r'\.jpg[&?]|\.jpeg[&?]|\.png[&?]|\.gif[&?]|\.pdf[&?]|\.ogg[&?]|\.mp3[&?]|\.avi[&?]|\.mp4[&?]', re.IGNORECASE)
+
 
 ## Open and read URL source file
 try:
@@ -62,15 +66,24 @@ sourcefile.close()
 urls = list(set(urls))
 
 
-## To do : url sampling to spare time
-#def sampling(urls):
-#	for temp in urls:
-#		parsed = urlparse(temp)
-#		temp = urlunsplit(parsed[:2])
-
-
-# avoid getting trapped
-mediare = re.compile(r'\.jpg$|\.JPG$|\.jpeg$|\.png$|\.gif$|\.pdf$|\.ogg$|\.mp3$|\.avi$|\.mp4$')
+# url sampling to spare time
+def sampling(urls):
+	temp = list()
+	sampled_urls = list()
+	urls = sorted(urls, key=str.lower)
+	for link in urls:
+		hostname = urlparse(link).netloc
+                if hostname is last:
+			temp.append(link)
+		else:
+			if temp:
+				sampled_urls.append(choice(temp))
+			else:
+				sampled_urls.append(lasturl)
+			last = hostname
+			lasturl = link
+			temp = list()
+	return sampled_urls
 
 
 # fetch URL
@@ -132,8 +145,7 @@ def findlinks(code):
 	##dom = parse('http://www.google.com/').getroot()
 	##links = dom.cssselect('a')
 	for candidate in re.findall(r'href="(http://.+?)"', code):
-		match = mediare.search(candidate)
-		if not match:
+		if not mediafinal.search(candidate) and not mediaquery.search(candidate):
 			try:
 				# useful out of western domain names
 				candidate = unquote(quote(candidate.encode("utf8"))).decode("utf8")

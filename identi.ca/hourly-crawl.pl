@@ -8,14 +8,13 @@
 
 use strict;
 use warnings;
-# use utf8; use open ':encoding(utf8)'; doesn't seem to be necessary here
 use threads;
 use threads::shared;
 use Time::HiRes qw( time sleep );
 use Cwd;
 my $directory = cwd;
 use lib $directory;
-use Reddit_Fetch_Extract qw( fetch extract );
+use Identica_Fetch_Extract qw( fetch extract );
 
 
 my $start_time = time();
@@ -190,24 +189,23 @@ else {
 	print "No external links.\n";
 }
 
+
 # write down the files
-open (my $resultint, '>>', $directory . '/result-int');
-print $resultint join("\n", @internal);
-close($resultint);
+sub writefile {
+	my ($filename, $type, $array) = @_;
+	open (my $fh, $type, $filename);
+	print $fh join("\n", @{$array});
+	close($fh);
+	return;
+}
 
-open (my $resultext, '>>', $directory . '/result-ext');
-print $resultext join("\n", @external);
-close($resultext);
-
-open (my $errurls, '>>', $directory . '/errurls');
-print $errurls join("\n", @errurls);
-close($errurls);
+writefile($directory . '/result-int', '>>', \@internal);
+writefile($directory . '/result-ext', '>>', \@external);
+writefile($directory . '/errurls', '>>', \@errurls);
 
 %seen = ();
 @hourly_spare = grep { ! $seen{ $_ }++ } @hourly_spare;
-open (my $hspare, '>', $directory . '/hourly_spare');
-print $hspare join("\n", @hourly_spare);
-close($hspare);
+writefile($directory . '/hourly_spare', '>', \@hourly_spare);
 
 open (my $dspare, '>', $directory . '/daily_spare');
 print $dspare join("\n", keys %daily_spare);

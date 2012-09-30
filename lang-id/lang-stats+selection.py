@@ -11,7 +11,6 @@
 from __future__ import division
 from __future__ import print_function
 from collections import defaultdict
-
 import optparse
 
 
@@ -31,7 +30,7 @@ options, args = parser.parse_args()
 if options.inputfile is None:
 	parser.error('No input file given (-h or --help for more information)')
 
-## Initialize the dictionaries to fill
+## Initialize
 langd = defaultdict(int)
 urld = defaultdict(int)
 intd = defaultdict(int)
@@ -42,7 +41,7 @@ try:
 	langfile = open('ISO_639-1_codes', 'r')
 except IOError:
 	sys.exit("could not open the file containing the language codes")
-## adapted from this source : https://gist.github.com/1262033
+# adapted from this source : https://gist.github.com/1262033
 for line in langfile:
 	columns = line.split(' ')
 	codes[columns[0].strip("':")] = columns[1].strip("',\n")
@@ -53,12 +52,12 @@ if options.lcodes is True:
 	langlist = inp.split(',')
 
 try:
-	f = open(options.inputfile, 'r')
+	infh = open(options.inputfile, 'r')
 except IOError:
 	sys.exit("could not open input file")
 
-# Parse the input file
-for line in f:
+## Parse input file
+for line in infh:
 	columns = line.split('\t')
 	## two possibilities due to the 'hr' option of the Perl script in the same directory
 	if len(columns) == 3 or len(columns) == 4:
@@ -72,7 +71,7 @@ for line in f:
 			if options.lcodes is True:
 				marker += 1
 				intd[columns[0]] = columns[marker].rstrip()
-f.close()
+infh.close()
 
 
 # Display and print the results
