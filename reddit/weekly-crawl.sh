@@ -16,8 +16,7 @@ if [ -f $archive ]
 	tar -xjf $archive
 fi
 
-# Language codes currently implemented
-lcodes=( "cs" "da" "de" "es" "fi" "fr" "it" "no" "po" "pt" "ro" )
+lcodes=( "cs" "da" "de" "es" "fi" "fr" "hi" "hr" "it" "no" "po" "pt" "ro" "ru" "sv" )
 
 # Create a temporary file
 tempfile() {
@@ -32,7 +31,7 @@ trap 'rm -f $TMP1' EXIT
 # Main loop, calls the api-crawl script
 for lang in ${lcodes[@]}; do
 
-	python api-crawl.py -l $lang &>> reddit-crawl.log
+	python api-crawl.py -u -l $lang &>> reddit-crawl.log	# the --no-language-check option may be useful
 
 	EXT=$lang"_external"
 	EXTUS=$lang"_extuserslinks"

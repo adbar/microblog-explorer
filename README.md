@@ -70,9 +70,9 @@ Reddit
 
 This crawler gathers (nearly) all external and internal links starting from a given reddit page, a multi-reddit expression or a given language code (which is a pre-compiled multi-reddit).
 
-All the functions described here are featured by the API version which gets shorter pages (in JSON format) with 100 links instead of 25. It is thus much faster and it is recommended, the older HTML-based one remains in case the API rules change.
+All the functions described here are featured by the API version which gets shorter pages (in JSON format) containing 100 links instead of 25. It is thus much faster and it is recommended, there was an older HTML-based script which has been discontinued.
 
-Target languages available so far : Czech, Danish, German, Spanish, Finnish, French, Italian, Norse, Polish, Portuguese and Romanian.
+There are 15 target languages available so far : Croatian, Czech, Danish, Finnish, French, German, Hindi, Italian, Norse, Polish, Portuguese, Romanian, Russian, Spanish and Swedish.
 
 Using the spell-checker provided by the python-enchant package, the script discriminates between links whose titles are mostly English and others which are bound to be in the target language. Tests show that the probability to find urls that lead to English text is indeed much higher concerning the 'suspicious' list.
 
