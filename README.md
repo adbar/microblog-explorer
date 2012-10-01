@@ -70,21 +70,51 @@ Reddit
 
 This crawler gathers (nearly) all external and internal links starting from a given reddit page, a multi-reddit expression or a given language code (which is a pre-compiled multi-reddit).
 
-All the functions described here are featured by the API version which gets shorter pages (in JSON format) containing 100 links instead of 25. It is thus much faster and it is recommended, there was an older HTML-based script which has been discontinued.
+All the functions described here are featured by the API version which gets shorter pages (in JSON format) containing 100 links instead of 25. The official API limitations are respected, with a few more than 2 seconds between two requests.
 
 There are 15 target languages available so far : Croatian, Czech, Danish, Finnish, French, German, Hindi, Italian, Norse, Polish, Portuguese, Romanian, Russian, Spanish and Swedish.
 
-Using the spell-checker provided by the python-enchant package, the script discriminates between links whose titles are mostly English and others which are bound to be in the target language. Tests show that the probability to find urls that lead to English text is indeed much higher concerning the 'suspicious' list.
+Using the spell-checker provided by the python-enchant package, the script discriminates between links whose titles are mostly English and others which are bound to be in the target language. Tests show that the probability to find URLs that lead to English text is indeed much higher concerning the 'suspicious' list. This option can be deactivated.
 
 Usage examples :
 
 	python reddit-crawl.py --starter http://www.reddit.com/r/Polska/
-	python reddit-crawl.py -s Polska		# the same, shorter
+	python reddit-crawl.py -s Polska			# the same, shorter
 
-	python reddit-crawl.py -l dkpol+denmark		# using a multi-reddit expression
-	python reddit-crawl.py -l da			# the same, using a language code
+	python reddit-crawl.py -l dkpol+denmark			# using a multi-reddit expression
+	python reddit-crawl.py -l da				# the same, using a language code
 
-Prints a report on STDOUT and creates X files.
+	python reddit-crawl.py -l hi --no-language-check	# hindi, no links refused
+
+Prints a report on STDOUT and creates files.
+
+The 'weekly-crawl.sh' shell script performs a crawl of all the given languages.
+
+
+FriendFeed
+----------
+
+Using the API, the script performs crawls according to the following options : 'simple' (homepage only), 'users' (only explore a given list of users), 'friends' (look for the friends channel), deep (a smart deep crawl targeting the interesting users, i.e. the users by which a significant number of relevant links was found).
+
+As there are no official limitations, the time between two requests can vary. After a certain number of successful requests with little or no sleep, the server starts dropping most of the inbound connections.
+
+The link selection is similar to the reddit crawls : using a spell-checked, the script discriminates between links whose titles are mostly English and others which are bound to be in the target language.
+
+For a complete list of the options, please refer to the help section :
+
+	python friendfeed-static.py -h
+
+Prints a report on STDOUT and creates files.
+
+
+Getting one step further
+------------------------
+
+The 'depth+1.py' script retrieves all the URLs in a file (one URL per file) or creates a sample of them and attempts to download the HTML documents and find all the URLs they contain. It then stores the result in an output file. This simple crawl one level further in depth is meant to be robust be cannot replace a full-fledged crawler. For testing purposes only, on relatively small lists (there is no multi-threading implemented).
+
+Usage :
+
+	python depth+1.py -i INPUT-FILE -o OUTPUT-FILE --sampling --timeout 15 &> LOG
 
 
 Language identification
@@ -113,7 +143,7 @@ Prints a report on STDOUT and creates X files.
 
 ### Clean the list of URLs
 
-Removes non-http protocols, images, PDFs, audio and video files, ad banners, feeds :
+Removes non-http protocols, images, PDFs, audio and video files, ad banners, feeds and unwanted hostnames like twitter.com, google.something, youtube.com or flickr.com :
 
     python clean_urls.py -i INPUTFILE -o OUTPUTFILE
     python clean_urls.py -h				# for help

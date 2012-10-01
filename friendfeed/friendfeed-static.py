@@ -32,13 +32,15 @@ bodies = defaultdict(int)
 
 # TODO:
 # interesting tld-extractor : https://github.com/john-kurkowski/tldextract
-# reduce code (concats, functions)
+# reduce code size (concats, functions)
 # todo/done ?
 # internal links
 # continue / break ?
 # comments : program structure
 # -df bug ?
 # reziubqzecdpoin... filter
+# hash users list ?
+# benchmark mode : 10 out of 100 urls randomly
 
 
 ## Parse arguments and options
@@ -49,20 +51,21 @@ parser.add_option("-f", "--friends", dest="friends", action="store_true", defaul
 parser.add_option("-d", "--deep", dest="deep", action="store_true", default=False, help="smart deep crawl")
 parser.add_option("-r", "--requests", dest="requests", help="max requests")
 parser.add_option("-v", "--verbose", dest="verbose", action="store_true", default=False, help="debug mode (body and ids info)")
+# parser.add_option("--no-language-check", dest="nolangcheck", action="store_true", default=False, help="disable the language check")
 options, args = parser.parse_args()
 
-# Test/open file
+# Check for already existing files / open file
 try:
-    usersfile = open('users', 'r')
+    usersfile = open('usersdone', 'r')
     usersdone = usersfile.readlines()
+    usersdone = list(set(usersdone))
     usersfile.close()
 except IOError:
     if options.users is True:
-        #sys.exit('"users" file mandatory with the -u/--users switch')
-        print ('"users" file mandatory with the -u/--users switch')
+        print ('"usersdone" file mandatory with the -u/--users switch')
         os._exit(1)
     else:
-        pass
+        usersdone = list()
 
 
 
@@ -74,9 +77,10 @@ start_time = time.time()
 # nothing indicated in the API documentation : http://friendfeed.com/api/documentation
 # 2 secs seem to be close to the limit though
 sleeptime = 2
-timelimit = 12
+timelimit = 10
 total_requests = 0
-usersdone, userstodo, links, rejectlist, templinks = ([] for i in range(5))
+total_errors = 0
+userstodo, links, rejectlist, templinks = ([] for i in range(4))
 
 
 ## FILTERS
@@ -213,10 +217,10 @@ def findlinks(code, step):
                     else:
 
                         # Check spelling to see if the link text is in English
-                        langtest = re.sub(r"\p{P}+", "", body)
+                        langtest = re.sub(r'\p{P}+', '', body)
                         wordcount = len(re.findall(r'\w+', langtest)) # redundant, see enchant.tokenize
                         errcount = 0
-                        try :
+                        try:
                             spellcheck.set_text(langtest)
                             for err in spellcheck:
                                 errcount += 1
@@ -225,9 +229,10 @@ def findlinks(code, step):
                                     flag = 1
                                 else:
                                     rejectlist.append(url)
+                            # the length of body has been checked, so that means it contained only punctuation marks
                             except ZeroDivisionError:
-                                print ("empty title:", langtest)
-                                #i += 1
+                                flag = 1
+                        # if the string couldn't be translated properly, it is also interesting
                         except (UnicodeEncodeError, AttributeError):
                             flag = 1
 		# body in bodies : frequent posts detection and storage ?
@@ -271,10 +276,15 @@ def findlinks(code, step):
 # fetch + analyze
 def fetch_analyze(address, flswitch):
     global templinks
+    global total_errors
     jsoncode = req('http://friendfeed-api.com/v2/feed/' + address)
     if jsoncode is not 'error':
         templinks = findlinks(jsoncode, flswitch)
         links.extend(templinks)
+    else:
+        total_errors += 1
+        return 'error'
+    return 1
 
 
 # smart deep crawl
@@ -286,8 +296,9 @@ def smartdeep():
         hostnames[hostname] += 1
     try:
         ratio = len(templinks)/len(hostnames)
-        if ratio >= 5: # could also be 7 or 10
-            print (ratio)
+        if ratio >= 10: # could also be 5 or 7.5
+            if options.verbose is True:
+                print (ratio)
             return 1
         else:
             return 0
@@ -312,7 +323,15 @@ def uniqlists():
 # First pass : crawl of the homepage (public feed), skipped with the -u/--users switch
 
 if options.users is False:
-    fetch_analyze('public?maxcomments=0&maxlikes=0&num=100', 1)
+    value = fetch_analyze('public?maxcomments=0&maxlikes=0&num=100', 1)
+    if value is 'error' and total_errors == 1:
+        #sleeptime *= 2
+        for n in range(1, 3):
+            time.sleep(sleeptime)
+            value = fetch_analyze('public?maxcomments=0&maxlikes=0&num=100', 1)
+            if value is not 'error':
+                break
+        
     #jsoncode = (jsoncode.decode('utf-8')).encode('utf8')
 
 
@@ -325,28 +344,31 @@ if options.simple is False:
     for userid in userstodo:
         if options.requests is not None and total_requests >= options_requests:
             break
-        fetch_analyze(str(userid) + '?maxcomments=0&maxlikes=0&num=100', 2)
+        value = fetch_analyze(str(userid) + '?maxcomments=0&maxlikes=0&num=100', 2)
         usersdone.append(userid)
 
 	# smart deep crawl
-        if options.deep is True:
+        if options.deep is True and value is not 'error':
            for num in range(1, 6):
                result = smartdeep()
                if result == 1:
-                   fetch_analyze(str(userid) + '?maxcomments=0&maxlikes=0&start=' + str(num) + '00&num=100', 2)
+                   value = fetch_analyze(str(userid) + '?maxcomments=0&maxlikes=0&start=' + str(num) + '00&num=100', 2)
+                   if value is 'error':
+                       break
 
     # crawl the 'friends' page
     if options.friends is True:
         for userid in userstodo:
-            fetch_analyze(str(userid) + '/friends?maxcomments=0&maxlikes=0&num=100', 3)
+            value = fetch_analyze(str(userid) + '/friends?maxcomments=0&maxlikes=0&num=100', 3)
 
             # smart deep crawl
-            if options.deep is True:
+            if options.deep is True and value is not 'error':
                for num in range(1, 6):
                    result = smartdeep()
                    if result == 1:
-                       fetch_analyze(str(userid) + '/friends?maxcomments=0&maxlikes=0&start=' + str(num) + '00&num=100', 3)
-
+                       value = fetch_analyze(str(userid) + '/friends?maxcomments=0&maxlikes=0&start=' + str(num) + '00&num=100', 3)
+                       if value is 'error':
+                           break
 
 # Write all the logs
 @atexit.register
@@ -355,7 +377,9 @@ def the_end():
     if options.verbose is True:
         print ('##########')
     print ('Requests:\t', total_requests)
+    print ('Errors:\t\t', total_errors)
     print ('Users (total):\t', len(usersdone))
+
     writefile('ff-usersdone', usersdone, 'a')
     print ('New users:\t', len(userstodo))
     writefile('ff-userstodo', userstodo, 'a')

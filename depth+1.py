@@ -13,24 +13,24 @@ import socket
 from urllib2 import Request, urlopen, URLError, quote, unquote
 from StringIO import StringIO
 import gzip
+import time
 import optparse
-import urlparse
+from urlparse import urlparse
 import signal
 import sys
 from random import choice
+import atexit
 
 
 ## TODO
 # interesting tld-extractor : https://github.com/john-kurkowski/tldextract
-# url sampling
 
 
 # Parse arguments and options
 parser = optparse.OptionParser(usage='usage: %prog [options] arguments')
-parser.add_option("-i", "--input-file", dest="inputfile",
-	help="input file name", metavar="FILE")
-parser.add_option("-o", "--output-file", dest="outputfile",
-	help="output file name", metavar="FILE")
+parser.add_option("-i", "--input-file", dest="inputfile", help="input file name", metavar="FILE")
+parser.add_option("-o", "--output-file", dest="outputfile", help="output file name", metavar="FILE")
+parser.add_option("-s", "--sampling", dest="sampling", action="store_true", default=False, help="URL sampling to save time")
 parser.add_option("-t", "--timeout", dest="timeout", help="timeout for requests (in sec, default 10)")
 
 options, args = parser.parse_args()
@@ -46,6 +46,7 @@ if options.timeout is None:
 # Initialize
 options.timeout = int(options.timeout)
 alarm_timeout = 20 + options.timeout
+# socket.setdefaulttimeout(timeout) ??
 urls, sampled_urls, newurls = ([] for i in range(3))
 
 # avoid getting trapped
@@ -58,11 +59,17 @@ try:
 	sourcefile = open(options.inputfile, 'r')
 except IOError:
 	sys.exit("could not open the file containing the urls")
+
+# time the whole script
+start_time = time.time()
+
 for line in sourcefile:
-	line = line.rstrip()
+	line = line.rstrip('\n')
 	line = line.rstrip('/')
-	urls.append(line)
+        if not mediafinal.search(line) and not mediaquery.search(line):
+		urls.append(line)
 sourcefile.close()
+
 urls = list(set(urls))
 
 
@@ -70,6 +77,8 @@ urls = list(set(urls))
 def sampling(urls):
 	temp = list()
 	sampled_urls = list()
+	last = ''
+	lasturl = ''
 	urls = sorted(urls, key=str.lower)
 	for link in urls:
 		hostname = urlparse(link).netloc
@@ -86,6 +95,12 @@ def sampling(urls):
 	return sampled_urls
 
 
+if options.sampling is True:
+	print ('Raw urls:', len(urls))
+	urls = sampling(urls)
+	print ('Sampled urls:', len(urls))
+
+
 # fetch URL
 def req(url):
 	req = Request(url)
@@ -94,14 +109,12 @@ def req(url):
 
 	try:
 		response = urlopen(req, timeout = options.timeout)
-	except (URLError, BadStatusLine) as e:
+	except Exception as e:
 		if hasattr(e, 'reason'):
-			print (e.reason, ': ', url)
-		elif hasattr(e, 'code'):
-			print ('Error ', e.code, ': ', url)
+			print (e.reason, ':', url)
 		else:
-			print ("Unclassified error: %r" % e)
-		return 'error' # is it necessary ?
+			print ("Unclassified error: %r" % e, url)
+        	return 'error'
 
 	size = response.info().get('Content-Length')
 	if size:
@@ -112,27 +125,27 @@ def req(url):
 				buf = StringIO( response.read())
 				gzf = gzip.GzipFile(fileobj=buf)
 				htmlcode = gzf.read()
-			except Exception,e:
+			except Exception as e:
 				if hasattr(e, 'reason'):
-					print (e.reason, ': ', url)
+					print (e.reason, ':', url)
 				else:
-					print ("Unclassified error: %r" % e)
-				return 'error' # is it necessary ?
+					print ("Unclassified error: %r" % e, url)
+				return 'error'
 		elif response.info().gettype() == 'text/html':
 			try:
 				htmlcode = response.read()
-			except Exception,e:
+			except Exception as e:
 				if hasattr(e, 'reason'):
-					print (e.reason, ': ', url)
+					print (e.reason, ':', url)
 				else:
 					print ("Unclassified error: %r" % e)
-				return 'error' # is it necessary ?
+				return 'error'
 		else:
 			print ('no gzip or text/html content: ', url)
-			return 'error' # is it necessary ?
+			return 'error'
 	else:
 		print ('content-length to high (', size, '): ', url)
-		return 'error' # is it necessary ?
+		return 'error'
 
 	return htmlcode
 
@@ -179,20 +192,23 @@ def handler(signum, frame):
 
 # links counter
 counter = 0
-
+errors_counter = 0
 
 # MAIN LOOP
 for link in urls:
-	
 	counter += 1
 
 	try:
 		# alarm
 		signal.signal(signal.SIGALRM, handler)
 		signal.alarm(alarm_timeout)
-		#fetch page and extract links
+		# fetch page and extract links
 		htmlcode = req(link)
 		if htmlcode:
+			if htmlcode is 'error':
+				errors_counter += 1
+				signal.alarm(0)
+				continue
 			pageurls = findlinks(htmlcode)
 			newurls.extend(pageurls)
 	except RuntimeError: # one way to catch it...
@@ -209,5 +225,12 @@ for link in urls:
 		newurls = list()
 
 
-newurls = list(set(newurls))
-writefile(options.outputfile, newurls)
+# Write everything needed, even if there was an exception
+@atexit.register
+def the_end():
+	print ('Number of links analyzed :', counter)
+	print ('Total links in the list :', len(urls))
+	print ('Number of errors :', errors_counter)
+	newurls = list(set(newurls))
+	writefile(options.outputfile, newurls)
+	print ('Execution time (secs): {0:.2f}' . format(time.time() - start_time))
