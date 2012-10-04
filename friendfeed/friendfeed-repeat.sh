@@ -7,21 +7,20 @@
 
 
 # TODO:
-# TIMEOUT:
-# http://stackoverflow.com/questions/687948/timeout-a-command-in-bash-without-unnecessary-delay
+# TIMEOUT: timeout 3550s -s 9
 # functions !
 
 
 # Create the necessary files
 
-if [ ! -f /home/schnock/FRIENDFEED/HOURLY/ff-users-global ]
+if [ ! -f ff-users-global ]
 then
-	touch /home/schnock/FRIENDFEED/HOURLY/ff-links-global
+	touch ff-links-global
 fi
 
-if [ ! -f /home/schnock/FRIENDFEED/HOURLY/ff-rejected-global ]
+if [ ! -f ff-rejected-global ]
 then
-	touch /home/schnock/FRIENDFEED/HOURLY/ff-rejected-global
+	touch ff-rejected-global
 fi
 
 

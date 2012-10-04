@@ -21,6 +21,7 @@ import sys
 from urlparse import urlparse
 import atexit
 import os
+import random
 
 from enchant.checker import SpellChecker # see package 'python-enchant' on Debian/Ubuntu
 spellcheck = SpellChecker("en_US")
@@ -40,7 +41,7 @@ bodies = defaultdict(int)
 # -df bug ?
 # reziubqzecdpoin... filter
 # hash users list ?
-# benchmark mode : 10 out of 100 urls randomly
+# frequent posts detection ?
 
 
 ## Parse arguments and options
@@ -49,15 +50,34 @@ parser.add_option("-s", "--simple", dest="simple", action="store_true", default=
 parser.add_option("-u", "--users", dest="users", action="store_true", default=False, help="users crawl ONLY (without public feed)")
 parser.add_option("-f", "--friends", dest="friends", action="store_true", default=False, help="friends crawl")
 parser.add_option("-d", "--deep", dest="deep", action="store_true", default=False, help="smart deep crawl")
+parser.add_option("-b", "--benchmark", dest="benchmark", action="store_true", default=False, help="benchmarking mode")
+parser.add_option("--no-language-check", dest="nolangcheck", action="store_true", default=False, help="disable the language check")
 parser.add_option("-r", "--requests", dest="requests", help="max requests")
 parser.add_option("-v", "--verbose", dest="verbose", action="store_true", default=False, help="debug mode (body and ids info)")
-# parser.add_option("--no-language-check", dest="nolangcheck", action="store_true", default=False, help="disable the language check")
 options, args = parser.parse_args()
+
+
+userstodo, usersdone, links, rejectlist, templinks, nodistinction, benchmarklist = ([] for i in range(7))
+
 
 # Check for already existing files / open file
 try:
-    usersfile = open('usersdone', 'r')
-    usersdone = usersfile.readlines()
+    usersfile = open('ff-userstodo', 'r')
+    for line in usersfile:
+        userstodo.append(line.rstrip())
+    userstodo = list(set(userstodo))
+    usersfile.close()
+except IOError:
+    if options.users is True:
+        print ('"ff-userstodo" file mandatory with the -u/--users switch')
+        os._exit(1)
+    else:
+        pass
+
+try:
+    usersfile = open('ff-usersdone', 'r')
+    for line in usersfile:
+        usersdone.append(line.rstrip())
     usersdone = list(set(usersdone))
     usersfile.close()
 except IOError:
@@ -80,7 +100,6 @@ sleeptime = 2
 timelimit = 10
 total_requests = 0
 total_errors = 0
-userstodo, links, rejectlist, templinks = ([] for i in range(4))
 
 
 ## FILTERS
@@ -151,6 +170,8 @@ def findlinks(code, step):
     subdict = defaultdict(int)
     global userstodo
     global usersdone
+    global nodistinction
+    global benchmarklist
 
     ## 'If I strip everything I don't want, I'll be able to fetch what I want'...
     ## This is ugly : to be replaced by a 'real' parser ?
@@ -194,6 +215,8 @@ def findlinks(code, step):
             urlre = re.search(r'href=\\"(http://.+?)\\"', body)
             if urlre:
                 url = urlre.group(1)
+                if options.benchmark is True:
+                    nodistinction.append(url)
 
 		# blogspot fake blog check
                 urlre = re.search(r'http://(.+?)\.blogspot\.com', url)
@@ -215,26 +238,43 @@ def findlinks(code, step):
                     if interntest.search(url):
                         pass # TODO
                     else:
-
-                        # Check spelling to see if the link text is in English
-                        langtest = re.sub(r'\p{P}+', '', body)
-                        wordcount = len(re.findall(r'\w+', langtest)) # redundant, see enchant.tokenize
-                        errcount = 0
-                        try:
-                            spellcheck.set_text(langtest)
-                            for err in spellcheck:
-                                errcount += 1
+                        if options.nolangcheck is False and options.benchmark is False:
+                            # Check spelling to see if the link text is in English
+                            langtest = re.sub(r'\p{P}+', '', body)
+                            wordcount = len(re.findall(r'\w+', langtest)) # redundant, see enchant.tokenize
+                            errcount = 0
                             try:
-                                if ( (errcount/wordcount) > 0.5):
+                                spellcheck.set_text(langtest)
+                                for err in spellcheck:
+                                    errcount += 1
+                                try:
+                                    if ( (errcount/wordcount) > 0.5):
+                                        flag = 1
+                                        if options.benchmark is True and step == 1:
+                                            benchmarklist.append(1)
+                                    else:
+                                        rejectlist.append(url)
+                                        if options.benchmark is True and step == 1:
+                                            benchmarklist.append(0)
+                                # the length of body has been checked, so that means it contained only punctuation marks
+                                except ZeroDivisionError:
                                     flag = 1
-                                else:
-                                    rejectlist.append(url)
-                            # the length of body has been checked, so that means it contained only punctuation marks
-                            except ZeroDivisionError:
+                            # if the string couldn't be translated properly, it is also interesting
+                            except (UnicodeEncodeError, AttributeError):
                                 flag = 1
-                        # if the string couldn't be translated properly, it is also interesting
-                        except (UnicodeEncodeError, AttributeError):
-                            flag = 1
+                        else:
+                            if options.benchmark is True:
+                                if step == 1:
+                                    uberlimit = 0.14
+                                elif step == 2:
+                                    uberlimit = 0.5
+                                if random.random() < uberlimit:
+                                    flag = 1
+                                    benchmarklist.append(1)
+                                else:
+                                    benchmarklist.append(0)
+                            else:
+                                flag = 1
 		# body in bodies : frequent posts detection and storage ?
                 else:
                     bodies[body] += 1
@@ -290,13 +330,16 @@ def fetch_analyze(address, flswitch):
 # smart deep crawl
 def smartdeep():
     global templinks
-    hostnames = defaultdict(int)
+    hostnames = list()
     for link in templinks:
         hostname = urlparse(link).netloc
-        hostnames[hostname] += 1
+        hostnames.append(hostname)
+    hostnames = list(set(hostnames))
+    #writefile('ff-templinks', templinks, 'a')
+    #writefile('ff-hostnames', hostnames, 'a')
     try:
-        ratio = len(templinks)/len(hostnames)
-        if ratio >= 10: # could also be 5 or 7.5
+        ratio = len(hostnames)/len(templinks)
+        if ratio >= 0.2: # could also be 0.05 or 0.075
             if options.verbose is True:
                 print (ratio)
             return 1
@@ -308,10 +351,11 @@ def smartdeep():
 
 # uniq lists
 def uniqlists():
-    global userstodo; userstodo = list(set(userstodo))
+    global userstodo; userstodo = list(set(userstodo)); #userstodo = filter(None, userstodo)
     global usersdone; usersdone = list(set(usersdone))
     global links; links = list(set(links))
     global rejectlist; rejectlist = list(set(rejectlist))
+    global nodistinction; nodistinction = list(set(nodistinction))
     # usersdone, userstodo, links, rejectlist = ([] for i in range(4)) ?
 
 
@@ -344,8 +388,8 @@ if options.simple is False:
     for userid in userstodo:
         if options.requests is not None and total_requests >= options_requests:
             break
-        value = fetch_analyze(str(userid) + '?maxcomments=0&maxlikes=0&num=100', 2)
         usersdone.append(userid)
+        value = fetch_analyze(str(userid) + '?maxcomments=0&maxlikes=0&num=100', 2)
 
 	# smart deep crawl
         if options.deep is True and value is not 'error':
@@ -370,10 +414,17 @@ if options.simple is False:
                        if value is 'error':
                            break
 
+
 # Write all the logs
 @atexit.register
 def the_end():
     uniqlists()
+    for user in usersdone:
+        try:
+            userstodo.remove(user)
+        except ValueError:
+            pass
+
     if options.verbose is True:
         print ('##########')
     print ('Requests:\t', total_requests)
@@ -382,10 +433,18 @@ def the_end():
 
     writefile('ff-usersdone', usersdone, 'a')
     print ('New users:\t', len(userstodo))
-    writefile('ff-userstodo', userstodo, 'a')
+    writefile('ff-userstodo', userstodo, 'w')
     print ('Rejected:\t', len(rejectlist))
     writefile('ff-rejected', rejectlist, 'a')
     print ('Links:\t\t', len(links))
     writefile('ff-links', links, 'a')
+
+    if options.benchmark is True:
+        try:
+            print ('Benchmark: {0:.2f}' . format(sum(benchmarklist)/len(benchmarklist)))
+        except ZeroDivisionError:
+            print ('Benchmark: ', '0')
+        writefile('ff-benchmarklist', benchmarklist, 'a')
+        writefile('ff-nodistinction', nodistinction, 'a')
 
     print ('Execution time (secs): {0:.2f}' . format(time.time() - start_time))
