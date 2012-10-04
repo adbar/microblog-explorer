@@ -228,6 +228,7 @@ for link in urls:
 # Write everything needed, even if there was an exception
 @atexit.register
 def the_end():
+	global newurls
 	print ('Number of links analyzed :', counter)
 	print ('Total links in the list :', len(urls))
 	print ('Number of errors :', errors_counter)

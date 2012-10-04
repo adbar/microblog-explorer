@@ -17,13 +17,10 @@ import optparse
 ## Parse arguments and options
 parser = optparse.OptionParser(usage='usage: %prog [options] arguments')
 
-parser.add_option('-l', '--language-codes',
-	action="store_true", dest="lcodes", default=False,
-	help="prompt for language codes and output of corresponding links")
-parser.add_option("-i", "--input-file", dest="inputfile",
-	help="input file name", metavar="FILE")
-parser.add_option("-o", "--output-file", dest="outputfile",
-	help="output file name (default : output to STDOUT)", metavar="FILE")
+parser.add_option('-l', '--language-codes', action="store_true", dest="lcodes", default=False, help="prompt for language codes and output of corresponding links")
+parser.add_option("-i", "--input-file", dest="inputfile", help="input file name", metavar="FILE")
+parser.add_option("-o", "--output-file", dest="outputfile", help="output file name (default : output to STDOUT)", metavar="FILE")
+parser.add_option("-w", "--wiki-friendly", action="store_true", dest="wikifriendly", default=False, help="wiki-friendly output (table format)")
 
 options, args = parser.parse_args()
 
@@ -75,8 +72,13 @@ infh.close()
 
 
 # Display and print the results
-print (len(urld), 'total unique urls')
-print ('-Language-\t', '-Code-', '-Docs-', '-%-', sep='\t')
+if options.wikifriendly is False:
+	print (len(urld), 'total unique urls')
+	print ('-Language-\t', '-Code-', '-Docs-', '-%-', sep='\t')
+else:
+	print ('|   ', len(urld), 'total unique urls   |||')
+	print ('|*Language*\t', '*Code*', '   *Docs*', '   *%*|', sep='|')
+
 for l in sorted(langd, key=langd.get, reverse=True):
 	if l in codes:
 		code = codes[l]
@@ -87,7 +89,10 @@ for l in sorted(langd, key=langd.get, reverse=True):
 	else:
 		code = code + "\t\t"
 	pcent = (langd[l] / len(urld))*100
-	print (code, l, langd[l], '%.1f' % round(pcent, 1), sep='\t')
+	if options.wikifriendly is False:
+		print (code, l, langd[l], '%.1f' % round(pcent, 1), sep='\t')
+	else:
+		print ('|', code, '|  ', l, '  |   ', langd[l], '|   ', '%.1f' % round(pcent, 1), '|')
 
 # Print the selected results in a file (-l option) and eventually save them (-o option)
 if options.lcodes is True:

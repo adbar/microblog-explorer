@@ -53,7 +53,8 @@ tempfile() {
     mktemp /tmp/${tempprefix}.XXXXXX
 }
 TMP1=$(tempfile)
-trap 'rm -f $TMP1' EXIT
+TMP2=$(tempfile)
+trap 'rm -f $TMP1 $TMP2' EXIT
 
 
 # Remove the unsafe/unwanted urls
@@ -71,8 +72,8 @@ total_lines=$(cat ${listfile} | wc -l)
 
 if (($req < $total_lines))
 then
-	head -${req} ${listfile} > TEMP1
-	listfile=TEMP1
+	head -${req} ${listfile} > $TMP2
+	listfile=$TMP2
 	((lines_per_file = (req + num_files - 1) / num_files))
 else
 	((lines_per_file = (total_lines + num_files - 1) / num_files))
@@ -123,18 +124,25 @@ mv $TMP1 RESULTS
 sort TO-CHECK | uniq > $TMP1
 mv $TMP1 TO-CHECK
 
-if (( $listfile == "TEMP1" ))
-then
-	tailpart=`expr $total_lines - $req`
-	tail -${tailpart} ${listfile} >> TODO
-	rm TEMP1
-fi
+# problem !!!
+#if (( $listfile == "TEMP1" ))
+#then
+#	tailpart=`expr $total_lines - $req`
+#	tail -${tailpart} ${listfile} >> TODO
+#	rm TEMP1
+#fi
 
 sort TODO | uniq > $TMP1
 mv $TMP1 TODO
 
+
+
+# Check the dubious URLs
+
+
+# review links (re-sampling)
+
+
 # Backup the final result
 tar -cjf backup.tar.bz2 RESULTS TO-CHECK TODO
 
-# rm TEMP1 ?
-# review links (re-sampling)

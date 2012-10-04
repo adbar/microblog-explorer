@@ -37,9 +37,9 @@ use String::CRC32; # on Debian/Ubuntu package libstring-crc32-perl
 # pack crc
 # change 'hostnames' name
 # test path final '/' issue
-# clear redirect candidates ?
+# clear redirect candidates subpart ?
 # LWP switch if no Furl ?
-# clear redirect status
+# hostreduce -> hostsampling with just 1 url ? or 1,2,3,... option ?
 
 
 # command-line options
@@ -456,11 +456,33 @@ sub fetch_url {
 		if ($confidence < 0.5) {
 			$suspicious = 1;
 		}
-		elsif ( ($lang eq "qu") || ($lang eq "ps") || ($lang eq "la") || ($lang eq "lo") || ($lang eq "an") || ($lang eq "am") || ($lang eq "kw") ) {
+		elsif ( ($lang eq "la") || ($lang eq "lo") || ($lang eq "an") || ($lang eq "am") || ($lang eq "kw") ) {
 			$suspicious = 1;
 		}
-		elsif ( $lang eq "zh" ) { # sadly, it has to be that way...
-			$suspicious = 1;
+		elsif ( ($lang eq "zh") || ($lang eq "qu") || ($lang eq "ps") ) {
+		# sadly, it has to be that way...
+			if ($auth =~ m/\.ru$/) {
+				$lang = "ru";
+				$confidence = "0.111"
+			}
+			elsif ($auth =~ m/\.jp$/) {
+				$lang = "ja";
+				$confidence = "0.111"
+			}
+			elsif ($auth =~ m/\.kr$/) {
+				$lang = "ko";
+				$confidence = "0.111"
+			}
+			elsif ($auth =~ m/\.cn$/) {
+				$suspicious = 0;
+			}
+			#elsif ($auth =~ m/\.ua$/) {
+			#	$lang = "ru";
+			#	$confidence = "0.111"
+			#}
+			else {
+				$suspicious = 1;
+			}
 		}
 		elsif ( ($lang eq "el") && ($auth !~ m/\.gr$/) && ($confidence != 1) ) {
 			$suspicious = 1;

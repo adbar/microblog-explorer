@@ -11,6 +11,18 @@
 ## advanced divide and conquer and/or URL pool
 
 
+# create a temporary file
+tempfile() {
+    tempprefix=$(basename "$0")
+    mktemp /tmp/${tempprefix}.XXXXXX
+}
+TMP1=$(tempfile)
+TMP2=$(tempfile)
+TMP3=$(tempfile)
+trap 'rm -f $TMP1 $TMP2 $TMP3' EXIT
+
+
+# Parse the options and store the values
 if (($# < 3)) || (($# > 4))
 then
 	echo "Usage : [list of urls] [number of requests] [number of threads] [seen urls file (optional)]"
@@ -23,18 +35,24 @@ then
 	exit 1
 fi
 
-
 listfile=$1
 req=$2
 num_files=$3
+
+
+# Shuffle the links in the input file
+sort $listfile | uniq > $TMP1
+shuf $TMP1 -o $TMP2
+listfile=$TMP2
+
 
 # Find a mean number of lines per file
 total_lines=$(cat ${listfile} | wc -l)
 
 if (($req < $total_lines))
 then
-	head -${req} ${listfile} > TEMP1
-	listfile=TEMP1
+	head -${req} ${listfile} > $TMP3
+	listfile=$TMP3
 	((lines_per_file = (req + num_files - 1) / num_files))
 else
 	((lines_per_file = (total_lines + num_files - 1) / num_files))
@@ -59,6 +77,7 @@ done
 
 wait
 
+
 # Merge the files
 cat LINKS-TODO.* > RED-LINKS-TODO
 rm LINKS-TODO.*
@@ -71,18 +90,13 @@ rm REDIRECTS.*
 cat red-ERRORS.* >> red-ERRORS
 rm red-ERRORS.*
 
-# Make sure all lines are unique
-tempfile() {
-    tempprefix=$(basename "$0")
-    mktemp /tmp/${tempprefix}.XXXXXX
-}
-TMP1=$(tempfile)
-trap 'rm -f $TMP1' EXIT
 
+# Make sure all lines are unique
 sort BAD-HOSTS | uniq > $TMP1
 mv $TMP1 BAD-HOSTS
 sort LINKS-TODO-redchecked | uniq > $TMP1
 mv $TMP1 LINKS-TODO-redchecked
+
 
 # Backup the final result
 tar -cjf backup-redirects.tar.bz2 BAD-HOSTS LINKS-TODO-redchecked red-ERRORS RED-LINKS-TODO
