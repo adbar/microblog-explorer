@@ -8,6 +8,30 @@
 ### The official API module for Python is much more complete : https://code.google.com/p/friendfeed-api/
 
 
+#####			SCRIPT OUTLINE			#####
+###
+###	1. Initialize					
+###		import functions
+###		parse arguments
+###		open files
+###		time limits and filters
+###	2. Functions
+###		write/append to files
+###		fetch URL
+###		find interesting external links
+###		fetch + analyze
+###		smart deep crawl
+###		uniq lists
+###	3. Main loop
+###		crawl of the homepage
+###		users on the list
+###	at exit : write all the logs
+###
+			####################
+
+
+
+# Import functions
 from __future__ import print_function
 from __future__ import division
 import re
@@ -33,14 +57,10 @@ bodies = defaultdict(int)
 
 # TODO:
 # interesting tld-extractor : https://github.com/john-kurkowski/tldextract
-# reduce code size (concats, functions)
 # todo/done ?
 # internal links
-# continue / break ?
-# comments : program structure
 # -df bug ?
 # reziubqzecdpoin... filter
-# hash users list ?
 # frequent posts detection ?
 
 
@@ -81,11 +101,7 @@ try:
     usersdone = list(set(usersdone))
     usersfile.close()
 except IOError:
-    if options.users is True:
-        print ('"usersdone" file mandatory with the -u/--users switch')
-        os._exit(1)
-    else:
-        usersdone = list()
+    pass
 
 
 
@@ -138,7 +154,8 @@ def req(url):
 
     try:
         response = urlopen(req, timeout = timelimit)
-    except (URLError) as e:
+    #except (URLError) as e:
+    except Exception as e:
         try:
             print ("Error: %r" % e, url)
         except NameError:
@@ -264,8 +281,9 @@ def findlinks(code, step):
                                 flag = 1
                         else:
                             if options.benchmark is True:
+                                # values supposed to be realistic
                                 if step == 1:
-                                    uberlimit = 0.14
+                                    uberlimit = 0.08
                                 elif step == 2:
                                     uberlimit = 0.5
                                 if random.random() < uberlimit:
@@ -339,7 +357,7 @@ def smartdeep():
     #writefile('ff-hostnames', hostnames, 'a')
     try:
         ratio = len(hostnames)/len(templinks)
-        if ratio >= 0.2: # could also be 0.05 or 0.075
+        if ratio >= 0.2:	# could also be 0.05 or 0.075
             if options.verbose is True:
                 print (ratio)
             return 1
@@ -351,12 +369,11 @@ def smartdeep():
 
 # uniq lists
 def uniqlists():
-    global userstodo; userstodo = list(set(userstodo)); #userstodo = filter(None, userstodo)
+    global userstodo; userstodo = list(set(userstodo));	#userstodo = filter(None, userstodo)
     global usersdone; usersdone = list(set(usersdone))
     global links; links = list(set(links))
     global rejectlist; rejectlist = list(set(rejectlist))
     global nodistinction; nodistinction = list(set(nodistinction))
-    # usersdone, userstodo, links, rejectlist = ([] for i in range(4)) ?
 
 
 ######################		END OF FUNCTIONS
@@ -386,7 +403,7 @@ if options.simple is False:
     uniqlists()
 
     for userid in userstodo:
-        if options.requests is not None and total_requests >= options_requests:
+        if options.requests is not None and total_requests >= options.requests:
             break
         usersdone.append(userid)
         value = fetch_analyze(str(userid) + '?maxcomments=0&maxlikes=0&num=100', 2)
@@ -415,6 +432,7 @@ if options.simple is False:
                            break
 
 
+# Exit strategy
 # Write all the logs
 @atexit.register
 def the_end():
@@ -425,12 +443,14 @@ def the_end():
         except ValueError:
             pass
 
+    # print infos
     if options.verbose is True:
         print ('##########')
     print ('Requests:\t', total_requests)
     print ('Errors:\t\t', total_errors)
     print ('Users (total):\t', len(usersdone))
 
+    # append/write to files
     writefile('ff-usersdone', usersdone, 'a')
     print ('New users:\t', len(userstodo))
     writefile('ff-userstodo', userstodo, 'w')
@@ -439,6 +459,7 @@ def the_end():
     print ('Links:\t\t', len(links))
     writefile('ff-links', links, 'a')
 
+    # benchmark option
     if options.benchmark is True:
         try:
             print ('Benchmark: {0:.2f}' . format(sum(benchmarklist)/len(benchmarklist)))
@@ -447,4 +468,5 @@ def the_end():
         writefile('ff-benchmarklist', benchmarklist, 'a')
         writefile('ff-nodistinction', nodistinction, 'a')
 
+    # execution time and exit
     print ('Execution time (secs): {0:.2f}' . format(time.time() - start_time))

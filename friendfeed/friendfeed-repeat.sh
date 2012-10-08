@@ -8,6 +8,7 @@
 
 # TODO:
 # TIMEOUT: timeout 3550s -s 9
+# http://stackoverflow.com/questions/687948/timeout-a-command-in-bash-without-unnecessary-delay
 # functions !
 
 

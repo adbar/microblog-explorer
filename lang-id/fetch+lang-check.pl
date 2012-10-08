@@ -13,7 +13,6 @@ use Fcntl qw(:flock SEEK_END);
 use Encode qw(encode);
 require Compress::Zlib;
 use base 'HTTP::Message';
-use Furl;
 use LWP::UserAgent;
 require LWP::Protocol::https;
 #require LWPx::ParanoidAgent; # on Debian/Ubuntu package liblwpx-paranoidagent-perl
@@ -26,20 +25,30 @@ use Time::HiRes qw( time sleep );
 use Try::Tiny; # on Debian/Ubuntu package libtry-tiny-perl
 use String::CRC32; # on Debian/Ubuntu package libstring-crc32-perl
 
+# test for Furl, use LWP as a fallback
+my $furl_loaded = 1;
+try {
+	require Furl;
+}
+catch {
+	$furl_loaded = 0;
+}
+
 
 # IMPORTANT : to avoid possible traps, use the clean_urls python script before this one to filter the list and spare memory (NB: the bash script does so).
 # This script is to be used in combination with a language identification system (https://github.com/saffsd/langid.py) normally running as a server on port 9008 : python langid.py -s
 # Please adjust the host and port parameters to your configuration (see below).
 
+# NO SHORTENED URLS RESOLUTION ANYMORE IN THIS SCRIPT
 
 # TODO :
 # hash + undef links that are already processed ?
 # pack crc
 # change 'hostnames' name
-# test path final '/' issue
-# clear redirect candidates subpart ?
-# LWP switch if no Furl ?
 # hostreduce -> hostsampling with just 1 url ? or 1,2,3,... option ?
+# make host sampling external
+# program structure
+# write files sub ?
 
 
 # command-line options
@@ -80,10 +89,10 @@ if (!defined $timeout) {
 my $alarm_timeout = 20 + $timeout;
 
 ## Agent here
-my $agent = "Microblog-Explorer/0.2";
+my $agent = "Microblog-Explorer/0.3";
 
 ## Most global variables here
-my (@urls, $url, %seen, %hostnames, $clean_text, $confidence, $lang, $suspicious, $join, @redirect_candidates, $scheme, $auth, $path, $query, $frag, $crc);
+my (@urls, %seen, %hostnames, $clean_text, $confidence, $lang, $suspicious, $join, $scheme, $auth, $path, $query, $frag, $crc, $furl, $lwp_ua);
 
 ### redirection list, may not be exhaustive
 my @redirection = ('t.co', 'j.mp', 'is.gd', 'wp.me', 'bit.ly', 'goo.gl', 'xrl.us', 'ur1.ca', 'b1t.it', 'dlvr.it', 'ping.fm', 'post.ly', 'p.ost.im', 'on.fb.me', 'tinyurl.com', 'friendfeed.com');
@@ -118,7 +127,7 @@ if ((defined $seen) && (-e $seen)) {
 	while (<$ldone>) {
 		chomp;
 		$_ =~ s/^http:\/\///;	# spare memory space
-		$_ =~ s/\/$//;			# avoid duplicates like www.mestys-starec.eu and www.mestys-starec.eu/
+		$_ =~ s/\/$//;		# avoid duplicates like www.mestys-starec.eu and www.mestys-starec.eu/
 		if ($_ =~ m/\t/) {
 			my @temp = split ("\t", $_);
 			# two possibilities according to the 'host-reduce' option
@@ -126,6 +135,7 @@ if ((defined $seen) && (-e $seen)) {
 				$crc = crc32($temp[0]);
 				$hostnames{$crc}++;
 			}
+			# (hopefully) here to ensure retro-compatibility
 			elsif (scalar (@temp) == 4) {
 				$join = $temp[0] . $temp[1];
 				$crc = crc32($join);
@@ -153,12 +163,8 @@ if (-e $todo) {
 
 		# url splitting
 		($scheme, $auth, $path, $query, $frag) = uri_split($_);
-		if ( ($auth ~~ @redirection) || (($_ =~ m/\.[a-z]+\/.+/) && (length($_) < 30)) ) {
-			## DO SOME PROCESSING HERE
-			push (@redirect_candidates, $_);
-		}
-		## if no redirection
-		else {
+
+		## REDIRECT PART DELETED, EXECUTE SPECIALLY DESIGNED SCRIPT BEFORE THIS ONE
 		
 		next if (($auth !~ m/\./) || ($scheme =~ m/^ftp/));
 		my $red_uri = uri_join($scheme, $auth);
@@ -202,8 +208,8 @@ if (-e $todo) {
 				$hostnames{$crc}++;
 			}
 		}
-		}
 	}
+	# ? last one ?
 	close($ltodo);
 }
 else {
@@ -212,38 +218,52 @@ else {
 
 %seen = ();
 @urls = grep { ! $seen{ $_ }++ } @urls;
-%seen = ();
-@redirect_candidates = grep { ! $seen{ $_ }++ } @redirect_candidates;
 die 'not enough links in the list, try --all ?' if ((defined $links_count) && (scalar(@urls) < $links_count));
 
-my $furl = Furl::HTTP->new(
-        agent   => $agent,
-        timeout => $timeout,
-);
+if ($furl_loaded == 1) {
+	$furl = Furl::HTTP->new(
+        	agent   => $agent,
+        	timeout => $timeout,
+	);
+}
 
 my ($code, $put_response);
-sub furl_put_req {
+sub put_request {
 	my $text = shift;
-	my ( $minor_version, $sub_code, $msg, $headers, $res ) = $furl->request(
-		method  => 'PUT',
-		host    => $put_ip,
-		port    => $port,
-		path_query => 'detect',
-		content	=> $text,
-	);
-	return ( $sub_code, $res );
+	my ( $minor_version, $sub_code, $msg, $headers, $response );
+	if ($furl_loaded == 1) {
+		( $minor_version, $sub_code, $msg, $headers, $response ) = $furl->request(
+			method  => 'PUT',
+			host    => $put_ip,
+			port    => $port,
+			path_query => 'detect',
+			content	=> $text,
+		);
+	}
+	else {
+		my $sendreq = HTTP::Request->new('PUT', 'http://' . $put_ip . ':' . $port . '/detect', undef, $clean_text );
+		my $resp = $lwp_ua->request($sendreq);
+		if ($resp->is_success) {
+			$response = $resp->decoded_content(charset => 'none');
+			$sub_code = 200;
+		}
+		else {
+			$sub_code = 500;
+		}
+	}
+	return ( $sub_code, $response );
 }
 
 my ($req, $res);
-my $ua = LWP::UserAgent->new; # another possibility : my $ua = LWPx::ParanoidAgent->new;
+$lwp_ua = LWP::UserAgent->new; # another possibility : my $lwp_ua = LWPx::ParanoidAgent->new;
 my $can_accept = HTTP::Message::decodable;
-$ua->agent($agent);
-$ua->timeout($timeout);
+$lwp_ua->agent($agent);
+$lwp_ua->timeout($timeout);
 
 
 # MAIN LOOP
 
-my ($stack, $visits, $i, $suspcount, $skip, $url_count, $redir_count) = (0) x 7;
+my ($stack, $visits, $i, $suspcount, $skip, $url_count) = (0) x 6;
 
 open (my $out_fh, '>>', $done) or die "Cannot open RESULTS file : $!\n";
 open (my $check_again_fh, '>>', $tocheck) or die "Cannot open TO-CHECK file : $!\n";
@@ -271,7 +291,7 @@ sub process_url {
 	return;
 }
 
-foreach $url (@urls) {
+foreach my $url (@urls) {
 	# end the loop if the given number of urls was reached
 	if (defined $links_count) {
 		last if ($stack == $links_count);
@@ -285,52 +305,12 @@ foreach $url (@urls) {
 	## undef ?
 }
 
-foreach $url (@redirect_candidates) {
-	# end the loop if the given number of urls was reached
-	if (defined $links_count) {
-		last if ($stack == $links_count);
-	}
-	# end the loop if there is no server available
-	last if ($skip == 1);
-
-	# check redirection
-	$redir_count++;
-	## found on http://stackoverflow.com/questions/2470053/how-can-i-get-the-ultimate-url-without-fetching-the-pages-using-perl-and-lwp
-	$req = HTTP::Request->new(HEAD => $url);
-	$req->header('Accept' => 'text/html');
-	$res = $ua->request($req);
-	if ($res->is_success) {
-		$url = $res->request()->uri();
-	}
-	else {
-		lock_and_write($errout, "Dropped (redirection):\t" . $url, $errfile);
-		$url =~ s/^http:\/\///;
-		$crc = crc32($url);
-		$hostnames{$crc}++;
-		next;
-	}
-
-	## process all the links, sort and pick random links ?
-
-	# check
-	if (defined $hostreduce) {
-		($scheme, $auth, $path, $query, $frag) = uri_split($url);
-		my $hostredux = uri_join($scheme, $auth);
-		$hostredux =~ s/^http:\/\///;
-		$url = $hostredux;
-	}
-	$crc = crc32($url);
-	unless ( exists $hostnames{$crc} ) {
-		# try to fetch and to send the page
-		process_url($url);
-	}
-}
-
 
 # SUBROUTINES
 
 # Necessary if there are several threads
 sub lock_and_write {
+	# ERRORS FILE ONLY ?
 	my ($fh, $text, $filetype) = @_;
 	chomp ($text);
 	# http://perldoc.perl.org/functions/flock.html
@@ -364,7 +344,7 @@ sub fetch_url {
 			'Accept-Encoding' => $can_accept,
 		);
 	# send request
-  	$res = $ua->request($req);
+  	$res = $lwp_ua->request($req);
 	if ($res->is_success) {
 		$visits++;
 		# check the size of the page (to avoid a memory overflow)
@@ -422,15 +402,17 @@ sub fetch_url {
 	until ( ($code == 200) || ($tries >= 5) ) {
 		if ($tries > 0) {
 			sleep(0.5);
+			#print "thread " . $filesuffix . " tries for the " . $tries . "time\n";
 		}
+		# Furl + LWP switch on
 		# WIDESTRING ERROR if no re-encoding, but re-encoding may break langid
 		try {
-			( $code, $put_response ) = furl_put_req($text);
+			( $code, $put_response ) = put_request($text);
 		}
 		catch {
 			$text = encode('UTF-8', $text);
 			try {
-				( $code, $put_response ) = furl_put_req($text);
+				( $code, $put_response ) = put_request($text);
 			}
 			catch {
 				#alarm 0; # not necessary ?
@@ -456,37 +438,41 @@ sub fetch_url {
 		if ($confidence < 0.5) {
 			$suspicious = 1;
 		}
+		# latin, amharic, etc. : too rare to be plausible
 		elsif ( ($lang eq "la") || ($lang eq "lo") || ($lang eq "an") || ($lang eq "am") || ($lang eq "kw") ) {
 			$suspicious = 1;
 		}
 		elsif ( ($lang eq "zh") || ($lang eq "qu") || ($lang eq "ps") ) {
 		# sadly, it has to be that way...
+			# Russian
 			if ($auth =~ m/\.ru$/) {
 				$lang = "ru";
 				$confidence = "0.111"
 			}
+			# Japanese
 			elsif ($auth =~ m/\.jp$/) {
 				$lang = "ja";
 				$confidence = "0.111"
 			}
+			# Korean
 			elsif ($auth =~ m/\.kr$/) {
 				$lang = "ko";
 				$confidence = "0.111"
 			}
+			# Chinese : the real one...
 			elsif ($auth =~ m/\.cn$/) {
 				$suspicious = 0;
 			}
-			#elsif ($auth =~ m/\.ua$/) {
-			#	$lang = "ru";
-			#	$confidence = "0.111"
-			#}
+			# Others ? ua, bg, kz, belarus, etc. ?
 			else {
 				$suspicious = 1;
 			}
 		}
+		# Greek
 		elsif ( ($lang eq "el") && ($auth !~ m/\.gr$/) && ($confidence != 1) ) {
 			$suspicious = 1;
 		}
+		# Luxemburgish (too rare to be true)
 		elsif ( ($lang eq "lb") && ($auth !~ m/\.lu$/) ) {
 			$suspicious = 1;
 		}
@@ -516,21 +502,22 @@ close($check_again_fh);
 close($errout);
 close($log);
 
+
+## THE END
+# no server found option
 unless ($skip == 1) {
 	splice(@urls, 0, $url_count);
-	splice(@redirect_candidates, 0, $redir_count);
 }
+# rest of the todo links (can be 0)
 open (my $ltodo, '>', $todo);
 print $ltodo join("\n", @urls);
-print $ltodo join("\n", @redirect_candidates);
 close($ltodo);
 
-my $total = $url_count + $redir_count;
+# Print infos
 if (defined $filesuffix) {
 	print "### thread number:\t" . $filesuffix . "\n";
 }
-print "seen:\t\t" . $total . "\n";
-print "redirected:\t" . $redir_count . "\n";
+print "seen:\t\t" . $url_count . "\n";
 print "tried:\t\t" . $stack . "\n";
 print "visited:\t" . $visits . "\n";
 print "positive:\t" . $i . "\n";

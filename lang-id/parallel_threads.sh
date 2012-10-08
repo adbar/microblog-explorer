@@ -20,6 +20,7 @@
 ## check URLs to check... and store them in 'RESULTS'
 ## store the results of clean_urls.py in a different file
 ## advanced divide and conquer and/or URL pool
+## more than 10 threads
 ### pool file = one half of the links, if n > 100, take the tenth of the list, export thread number
 ## test langid-server port
 ### if nc -vz localhost 9008 &> /dev/null
