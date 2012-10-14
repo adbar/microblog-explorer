@@ -62,6 +62,8 @@ bodies = defaultdict(int)
 # -df bug ?
 # reziubqzecdpoin... filter
 # frequent posts detection ?
+# ascii conversion test ?
+# spam url list ? https://meta.wikimedia.org/wiki/Spam_blacklist
 
 
 ## Parse arguments and options
@@ -77,7 +79,7 @@ parser.add_option("-v", "--verbose", dest="verbose", action="store_true", defaul
 options, args = parser.parse_args()
 
 
-userstodo, usersdone, links, rejectlist, templinks, nodistinction, benchmarklist = ([] for i in range(7))
+userstodo, usersdone, links, rejectlist, spamlist, templinks, nodistinction, benchmarklist = ([] for i in range(8))
 
 
 # Check for already existing files / open file
@@ -116,6 +118,8 @@ sleeptime = 2
 timelimit = 10
 total_requests = 0
 total_errors = 0
+# threshold for spell-check
+threshold = 0.8
 
 
 ## FILTERS
@@ -124,7 +128,8 @@ total_errors = 0
 reject = re.compile(r'"[0-9]+ comments?"')
 # spam (small list, to be updated)
 # http://www.twithawk.com/faq/stopwords
-spam = re.compile(r'viagra|^fwd|gambling|casino|loans|cialis|price|shop|buyonlinetab|buytabonline|streaming|store|download', re.IGNORECASE) # also in urls ?
+spam = re.compile(r'viagra|^fwd|gambling|casino|loans|cialis|price|shop|buyonlinetab|buytabonline|streaming|store|download|deals', re.IGNORECASE) # also in urls ?
+urlspam = re.compile(r'\.blog\.fc2\.com|\.visibli\.com|/seo/', re.IGNORECASE)
 # internal links (no used)
 interntest = re.compile(r'http://friendfeed.com/')
 
@@ -155,6 +160,7 @@ def req(url):
     try:
         response = urlopen(req, timeout = timelimit)
     #except (URLError) as e:
+    # if socket.timeout:
     except Exception as e:
         try:
             print ("Error: %r" % e, url)
@@ -235,11 +241,20 @@ def findlinks(code, step):
                 if options.benchmark is True:
                     nodistinction.append(url)
 
-		# blogspot fake blog check
+		# blogspot & co. fake/porn/etc. blog check
                 urlre = re.search(r'http://(.+?)\.blogspot\.com', url)
                 if urlre and len(urlre.group(1)) > 20:
                     #print ('blogspot detected:', url)
-                    rejectlist.append(url)
+                    spamlist.append(url)
+                    continue
+                urlre = re.search(r'http://([a-z0-9]+?)\.seesaa\.net', url)
+                if urlre and len(urlre.group(1)) >= 15:
+                    #print ('blogspot detected:', url)
+                    spamlist.append(url)
+                    continue
+                if urlspam.search(url):
+                    #print ('blogspot detected:', url)
+                    spamlist.append(url)
                     continue
 
                 body = re.sub('<.+?>.+?</.+?>', '', body)
@@ -265,7 +280,7 @@ def findlinks(code, step):
                                 for err in spellcheck:
                                     errcount += 1
                                 try:
-                                    if ( (errcount/wordcount) > 0.5):
+                                    if ( (errcount/wordcount) > threshold):
                                         flag = 1
                                         if options.benchmark is True and step == 1:
                                             benchmarklist.append(1)
@@ -374,6 +389,7 @@ def uniqlists():
     global links; links = list(set(links))
     global rejectlist; rejectlist = list(set(rejectlist))
     global nodistinction; nodistinction = list(set(nodistinction))
+    global spamlist; spamlist = list(set(spamlist))
 
 
 ######################		END OF FUNCTIONS
@@ -456,6 +472,8 @@ def the_end():
     writefile('ff-userstodo', userstodo, 'w')
     print ('Rejected:\t', len(rejectlist))
     writefile('ff-rejected', rejectlist, 'a')
+    print ('Spam:\t\t', len(spamlist))
+    writefile('ff-spamlist', spamlist, 'a')
     print ('Links:\t\t', len(links))
     writefile('ff-links', links, 'a')
 

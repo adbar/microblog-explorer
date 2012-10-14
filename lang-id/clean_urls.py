@@ -13,17 +13,15 @@ import sys
 
 # TODO:
 ## split lines of the kind '.htmlhttp://'
-## more banned hostnames ?
+## more banned hostnames : google ? twitter ? imgur ? (Alexa list)
 ## english link text
 
 
 
 # Parse arguments and options
 parser = optparse.OptionParser(usage='usage: %prog [options] arguments')
-parser.add_option("-i", "--input-file", dest="inputfile",
-	help="input file name", metavar="FILE")
-parser.add_option("-o", "--output-file", dest="outputfile",
-	help="output file name", metavar="FILE")
+parser.add_option("-i", "--input-file", dest="inputfile", help="input file name", metavar="FILE")
+parser.add_option("-o", "--output-file", dest="outputfile", help="output file name", metavar="FILE")
 
 options, args = parser.parse_args()
 
@@ -33,7 +31,7 @@ if options.inputfile is None or options.outputfile is None:
 
 # Main regexes
 protocol = re.compile(r'^http')
-hostnames_filter = re.compile(r'last\.fm|youtube\.com|youtu\.be|flickr\.com|vimeo\.com|instagr\.am', re.IGNORECASE)
+hostnames_filter = re.compile(r'last\.fm|youtube\.com|youtu\.be|flickr\.com|vimeo\.com|instagr\.am|imgur\.com/|google\.', re.IGNORECASE)
 mediafinal = re.compile(r'\.jpg$|\.jpeg$|\.png$|\.gif$|\.pdf$|\.ogg$|\.mp3$|\.avi$|\.mp4$|\.css$', re.IGNORECASE)
 notsuited = re.compile(r'^http://add?\.|^http://banner\.|feed$', re.IGNORECASE)
 mediaquery = re.compile(r'\.jpg[&?]|\.jpeg[&?]|\.png[&?]|\.gif[&?]|\.pdf[&?]|\.ogg[&?]|\.mp3[&?]|\.avi[&?]|\.mp4[&?]', re.IGNORECASE)
