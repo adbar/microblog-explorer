@@ -64,8 +64,9 @@ then
 	echo "File clean_urls.py not found"
 	exit 0
 fi
-python clean_urls.py -i $listfile -o $TMP1
-mv $TMP1 $listfile
+python clean_urls.py -i $listfile -o cleaned-url-list
+listfile="cleaned-url-list"
+#mv $TMP1 $listfile
 
 
 # Find a mean number of lines per file

@@ -49,6 +49,7 @@ catch {
 # make host sampling external
 # program structure
 # write files sub ?
+# redirection check : http/https
 
 
 # command-line options
@@ -94,9 +95,6 @@ my $agent = "Microblog-Explorer/0.3";
 ## Most global variables here
 my (@urls, %seen, %hostnames, $clean_text, $confidence, $lang, $suspicious, $join, $scheme, $auth, $path, $query, $frag, $crc, $furl, $lwp_ua);
 
-### redirection list, may not be exhaustive
-my @redirection = ('t.co', 'j.mp', 'is.gd', 'wp.me', 'bit.ly', 'goo.gl', 'xrl.us', 'ur1.ca', 'b1t.it', 'dlvr.it', 'ping.fm', 'post.ly', 'p.ost.im', 'on.fb.me', 'tinyurl.com', 'friendfeed.com');
-
 ## Files
 ### bound to change by command-line option
 my $todo = 'LINKS-TODO';
@@ -121,29 +119,23 @@ if (defined $filesuffix) {
 	$tocheck = $tocheck . "." . $filesuffix;
 }
 
-# Process the 'seen' file, if any
+# Process the 'seen' file, if there is one
 if ((defined $seen) && (-e $seen)) {
 	open (my $ldone, '<', $seen) or die "Cannot open LINKS-DONE file : $!\n";;
 	while (<$ldone>) {
 		chomp;
-		$_ =~ s/^http:\/\///;	# spare memory space
-		$_ =~ s/\/$//;		# avoid duplicates like www.mestys-starec.eu and www.mestys-starec.eu/
 		if ($_ =~ m/\t/) {
 			my @temp = split ("\t", $_);
-			# two possibilities according to the 'host-reduce' option
-			if (scalar (@temp) == 3) {
-				$crc = crc32($temp[0]);
-				$hostnames{$crc}++;
-			}
-			# (hopefully) here to ensure retro-compatibility
-			elsif (scalar (@temp) == 4) {
-				$join = $temp[0] . $temp[1];
-				$crc = crc32($join);
-				$hostnames{$crc}++;
-			}
+			#$_ =~ s/^http:\/\///;	# spare memory space
+			$_ =~ s/\/$//;		# avoid duplicates like www.mestys-starec.eu and www.mestys-starec.eu/
+			($scheme, $auth, $path, $query, $frag) = uri_split($_);
+			$crc = crc32($auth);
+			$hostnames{$crc}++;
+			# two possibilities according to the 'host-reduce' option : deleted
 		}
 		# if it's just a 'simple' list of urls
 		else {
+			$_ =~ s/\/$//;		# avoid duplicates like www.mestys-starec.eu and www.mestys-starec.eu/
 			$crc = crc32($_);
 			$hostnames{$crc}++;
 		}
@@ -162,12 +154,16 @@ if (-e $todo) {
 		}
 
 		# url splitting
-		($scheme, $auth, $path, $query, $frag) = uri_split($_);
-
 		## REDIRECT PART DELETED, EXECUTE SPECIALLY DESIGNED SCRIPT BEFORE THIS ONE
-		
+		($scheme, $auth, $path, $query, $frag) = uri_split($_);
 		next if (($auth !~ m/\./) || ($scheme =~ m/^ftp/));
-		my $red_uri = uri_join($scheme, $auth);
+		my $red_uri;
+		if ($_ =~ m/^https:\/\//) {
+			$red_uri = uri_join($scheme, $auth);
+		}
+		else {
+			$red_uri = $auth;
+		}
 		# without query ? necessary elements might be lacking
 		my $ext_uri = uri_join($scheme, $auth, $path);
 		# spare memory space
@@ -175,8 +171,8 @@ if (-e $todo) {
 		$ext_uri =~ s/^http:\/\///;
 		
 		# find out if the url has already been stored
-		## check for www.mestys-starec.eu vs www.mestys-starec.eu/ cases
-		if ( (defined $hostreduce) || (length($ext_uri) == length($red_uri)+1) ) {
+		## do this before in a separate script ?
+		if ( (defined $hostreduce) || (length($ext_uri) == length($auth)+1) ) {
 			## sampling : reduction from many urls with the same hostname to hostname & sample (random) url
 			if ((defined $identifier) && ($red_uri eq $identifier)) {
 				push (@tempurls, $ext_uri);
@@ -217,6 +213,7 @@ else {
 }
 
 %seen = ();
+%hostnames = ();
 @urls = grep { ! $seen{ $_ }++ } @urls;
 die 'not enough links in the list, try --all ?' if ((defined $links_count) && (scalar(@urls) < $links_count));
 
@@ -286,8 +283,6 @@ sub process_url {
 			lock_and_write($errout, $_, $errfile);
 		}
 	};
-	$crc = crc32($sub_url);
-	$hostnames{$crc}++;
 	return;
 }
 
@@ -346,7 +341,25 @@ sub fetch_url {
 	# send request
   	$res = $lwp_ua->request($req);
 	if ($res->is_success) {
+		# check if the request was redirected to a URL that has already been seen
+		my $final_red = $res->request()->uri();
+		($scheme, $auth, $path, $query, $frag) = uri_split($final_red);
+		my $final_short;
+		if ($final_red =~ m/^https:\/\//) {
+			$final_short = uri_join($scheme, $auth);
+		}
+		else {
+			$final_short = $auth;
+		}
+		$crc = crc32($final_short);
+		if (exists $hostnames{$crc}) {
+			alarm 0;
+			die "Dropped (redirect already seen):\t" . $finaluri;
+		}
+
 		$visits++;
+		$crc = crc32($final_red);
+		$hostnames{$crc}++;
 		# check the size of the page (to avoid a memory overflow)
 		my $testheaders = $res->headers;
 		if ($testheaders->content_length) {
@@ -415,8 +428,8 @@ sub fetch_url {
 				( $code, $put_response ) = put_request($text);
 			}
 			catch {
-				#alarm 0; # not necessary ?
-				die "ERROR: $@" . "\turl:\t" . $finaluri;
+				alarm 0; # not necessary ?
+				die "langid error: $@" . ", url:\t" . $finaluri;
 			};
 		};
 		$tries++;

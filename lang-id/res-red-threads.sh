@@ -40,8 +40,18 @@ req=$2
 num_files=$3
 
 
+# Remove the unsafe/unwanted urls
+if [ ! -f clean_urls.py ];
+then
+	echo "File clean_urls.py not found"
+	exit 0
+fi
+python clean_urls.py -i $listfile -o cleaned-url-list
+#mv $TMP1 $listfile
+
+
 # Shuffle the links in the input file
-sort $listfile | uniq > $TMP1
+sort cleaned-url-list | uniq > $TMP1
 shuf $TMP1 -o $TMP2
 listfile=$TMP2
 

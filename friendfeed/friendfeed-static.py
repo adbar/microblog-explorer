@@ -129,7 +129,7 @@ reject = re.compile(r'"[0-9]+ comments?"')
 # spam (small list, to be updated)
 # http://www.twithawk.com/faq/stopwords
 spam = re.compile(r'viagra|^fwd|gambling|casino|loans|cialis|price|shop|buyonlinetab|buytabonline|streaming|store|download|deals', re.IGNORECASE) # also in urls ?
-urlspam = re.compile(r'\.blog\.fc2\.com|\.visibli\.com|/seo/', re.IGNORECASE)
+urlspam = re.compile(r'\.blog\.fc2\.com|\.visibli\.com|/seo/|/seo-', re.IGNORECASE)
 # internal links (no used)
 interntest = re.compile(r'http://friendfeed.com/')
 

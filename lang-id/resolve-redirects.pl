@@ -16,11 +16,10 @@ use IO::Socket::SSL;
 use URI::Split qw(uri_split uri_join);
 use Time::HiRes qw( time sleep );
 use Try::Tiny; # on Debian/Ubuntu package libtry-tiny-perl
-use Time::HiRes qw( time );
 
 
 # TODO:
-## threads
+# verbose option
 
 
 # command-line options
@@ -48,7 +47,7 @@ if (!defined $timeout) {
 	$timeout = 10;
 }
 ## Agent here
-my $agent = "Microblog-Explorer/0.2";
+my $agent = "Microblog-Explorer/0.3";
 my ($req, $res);
 my $ua = LWP::UserAgent->new; # another possibility : my $ua = LWPx::ParanoidAgent->new;
 my $can_accept = HTTP::Message::decodable;
@@ -92,13 +91,8 @@ my $current_host = "dummy";
 
 # MAIN LOOP
 while (<$ltodo>) {
-	# just in case : avoid possible traps
+	# just in case : avoid possible traps (cleaned URLs thanks to python script)
 	next if (length($_) <= 10);
-	next if ( ($_ =~ m/\.ogg$|\.mp3$|\.avi$|\.mp4$/) || ($_ =~ m/\.jpg$|\.JPG$|\.jpeg$|\.png$|\.gif$/) );
-	next if ($_ =~ m/\.pdf$/);
-	#if (defined $links_count) {
-	#	last if ($stack == $links_count);
-	#}
 	my $url = $_;
 	my ($scheme, $auth, $path, $query, $frag) = uri_split($url);
 	# exit if it is a bad host
@@ -108,7 +102,7 @@ while (<$ltodo>) {
 		next;
 	}
 	# check redirection
-	if ( ($auth ~~ @redirection) || (($_ =~ m/\.[a-z]+\/.+/) && (length($url) < 30)) ) {
+	if ($auth ~~ @redirection) { # || (($_ =~ m/\.[a-z]+\/.+/) && (length($url) < 30)
 		$redir_count++;
 		if ($auth eq $current_host) {
 			# check the host : if there are too many errors it gets banned
