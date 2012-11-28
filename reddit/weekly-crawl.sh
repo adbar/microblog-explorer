@@ -16,7 +16,8 @@ if [ -f $archive ]
 	tar -xjf $archive
 fi
 
-lcodes=( "cs" "da" "de" "es" "fi" "fr" "hi" "hr" "it" "no" "po" "pt" "ro" "ru" "sv" )
+lcodes=( "cs" "da" "de" "es" "fi" "fr" "hi" "hr" "it" "nl" "no" "po" "pt" "ro" "ru" "sv" "tr" )
+
 
 # Create a temporary file
 tempfile() {

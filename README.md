@@ -98,29 +98,28 @@ Using the API, the script performs crawls according to the following options : '
 
 As there are no official limitations, the time between two requests can vary. After a certain number of successful requests with little or no sleep, the server starts dropping most of the inbound connections.
 
-The link selection is similar to the reddit crawls : using a spell-checked, the script discriminates between links whose titles are mostly English and others which are bound to be in the target language.
+The link selection is similar to the reddit crawls : using a spell-checked, the script discriminates between links whose titles are mostly English and others which are bound to be in the target language. This option can be bypassed manually by using `--no-language-check`.
 
-For a complete list of the options, please refer to the help section :
+The functionning is similar to the other scripts, except that here all the crawling ways through the social network are performed by the same script :
+
+	python friendfeed-static.py -s	# or --simple : single retrieval of the public feed
+	python friendfeed-static.py -u	# or --users : iterate through a list of users only
+	-d or --deep option : perform a smart deep crawl (visit a user's history if it seems relevant)
+
+For a complete list of the options (such as verbose or benchmark/random modes), please refer to the help section :
 
 	python friendfeed-static.py -h
 
 Prints a report on STDOUT and creates files.
 
 
-Getting one step further
-----------------------
-
-The 'depth+1.py' script retrieves all the URLs in a file (one URL per file) or creates a sample of them and attempts to download the HTML documents and find all the URLs they contain. It then stores the result in an output file. This simple crawl one level further in depth is meant to be robust be cannot replace a full-fledged crawler. For testing purposes only, on relatively small lists (there is no multi-threading implemented).
-
-Usage :
-
-	python depth+1.py -i INPUT-FILE -o OUTPUT-FILE --sampling --timeout 15 &> LOG
-
-
-
 Related Projects
 --------------
 
-For a downstream application see the [URL compressor](https://github.com/adbar/url-compressor) (also under development)
+For downstream applications :
+
+* [FLUX-Toolchain](https://github.com/adbar/url-compressor) (filtering and language-identification, under development)
+
+* [URL compressor](https://github.com/adbar/url-compressor)
 
 Other crawling projects are hosted on [Google Code](http://code.google.com/u/114777084812550353886/)

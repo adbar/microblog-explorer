@@ -43,12 +43,14 @@ if options.starter is None:
 		'hi': 'Hindi',
 		'hr': 'croatia',
 		'it': 'italy',
+		'nl': 'nederlands+Vlaanderen', # +nl ?
 		'no': 'norge+ektenyheter+oslo+norskenyheter',
 		'po': 'Polska',
 		'pt': 'portugal+brasil+BBrasil',
 		'ro': 'Romania+cluj+Timisoara',
 		'ru': 'ru',
-		'sv': 'sweden+Gothenburg+umea'
+		'sv': 'sweden+Gothenburg+umea',
+		'tr': 'bloggerdal+gundem+teknoloji+kultur_sanat'
 		}
 		if options.lcode in lcodes:
     			starter = lcodes[options.lcode]

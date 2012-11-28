@@ -41,10 +41,6 @@ do
    python friendfeed-static.py &
    sleep 10
    python friendfeed-static.py &
-   sleep 10
-   python friendfeed-static.py &
-   sleep 10
-   python friendfeed-static.py &
    wait
    sleep 5
    sort ff-usersdone | uniq > $TMP
