@@ -20,6 +20,7 @@ use Identica_Fetch_Extract qw( fetch extract );
 
 ## Expects a number as argument
 die 'Usage: perl XX.pl [number of links to scan]' if (scalar (@ARGV) != 1);
+die 'Usage: perl XX.pl [number of links to scan] -- argument must be an integer' unless ($ARGV[0] =~ /^-?\d+$/);
 my $ucount = $ARGV[0];
 
 ## Change the time between two pages in the same thread here

@@ -14,7 +14,7 @@
 
 # Create the necessary files
 
-if [ ! -f ff-users-global ]
+if [ ! -f ff-links-global ]
 then
 	touch ff-links-global
 fi

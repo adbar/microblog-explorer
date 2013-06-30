@@ -2,13 +2,15 @@ Microblog-Explorer
 ==================
 
 
-The Microblog-Explorer project is about gathering links from social networks to use them as crawling seeds.
+**The Microblog-Explorer project is about gathering links from social networks (FriendFeed, identi.ca, and Reddit) to use them as crawling seeds.** The messages themselves are not being stored so far. The links that are obviously pointing at images or videos are filtered out. 
+
+The scripts are still under development, they work but may not be optimized yet. They are tested on UNIX (Debian flavors), they should work on other UNIX-like systems provided the modules needed are installed.
+
+Scientific paper: Adrien Barbaresi. 2013. Crawling microblogging services to gather language-classified URLs. Workflow and case study. In *Proceedings of ACL Student Research Workshop*, Sofia. To appear.
 
 Other interests could be text analysis or network visualization, but they are not the priority right now.
 
-The scripts are under heavy development, they work but are not optimized yet. They are tested on UNIX (Debian flavors), they should work on other UNIX-like systems provided the modules needed are installed.
-
-The links that are obviously pointing at images or videos are filtered out.
+Copyright (C) Adrien Barbaresi, 2012-2013.
 
 
 Installation
@@ -16,10 +18,9 @@ Installation
 
 Recommandations for the Debian/Ubuntu systems (probably useful for other Linux distributions) :
 
-* Install or make sure you have following packages installed : libtry-tiny-perl libstring-crc32-perl libhtml-strip-perl libhtml-clean-perl
+* Install or make sure you have following packages installed: *libtry-tiny-perl libstring-crc32-perl libhtml-strip-perl libhtml-clean-perl python-enchant*
 
-* Open the CPAN console (e.g. sudo cpan) and say 'install Furl', as this Perl module is not installed by default, or let it by the LWP default. The script detects which module is available.
-
+* Use the default library (LWP, possibly slower) or open the CPAN console (e.g. sudo cpan) and say `install Furl`, as this Perl module is not installed by default. The script detects which module is available.
 
 
 Identi.ca
@@ -49,7 +50,7 @@ Because of this exponential number of requests, it is wise to explore no more th
 
 This script is still under development, it has not reached its optimal efficiency (neither on the client side, nor on identi.ca's).
 
-Example (provided there are 100 new URLs in the `USERS_TODO` list) :
+Example (provided there are 100 new URLs in the `USERS_TODO` list):
 
     perl long-distance-miner.pl 100
 
@@ -60,7 +61,7 @@ Writes a report on STDOUT and 5 files.
 
 The API could be faster, but an account is needed (which is not the case for the Twitter API).
 
-The Bash script deletes duplicates, it can be run before an export of the data or every day to reduce the size of the files :
+The Bash script deletes duplicates, it can be run before an export of the data or every day to reduce the size of the files:
 
     bash remove-duplicates.sh
 
@@ -74,9 +75,9 @@ All the functions described here are featured by the API version which gets shor
 
 There are 15 target languages available so far : Croatian, Czech, Danish, Finnish, French, German, Hindi, Italian, Norse, Polish, Portuguese, Romanian, Russian, Spanish and Swedish.
 
-Using the spell-checker provided by the python-enchant package, the script discriminates between links whose titles are mostly English and others which are bound to be in the target language. Tests show that the probability to find URLs that lead to English text is indeed much higher concerning the 'suspicious' list. This option can be deactivated.
+Using the spell-checker provided by the *python-enchant* package, the script discriminates between links whose titles are mostly English and others which are bound to be in the target language. Tests show that the probability to find URLs that lead to English text is indeed much higher concerning the 'suspicious' list. This option can be deactivated.
 
-Usage examples :
+Usage examples:
 
 	python reddit-crawl.py --starter http://www.reddit.com/r/Polska/
 	python reddit-crawl.py -s Polska			# the same, shorter
@@ -100,13 +101,15 @@ As there are no official limitations, the time between two requests can vary. Af
 
 The link selection is similar to the reddit crawls : using a spell-checked, the script discriminates between links whose titles are mostly English and others which are bound to be in the target language. This option can be bypassed manually by using `--no-language-check`.
 
-The functionning is similar to the other scripts, except that here all the crawling ways through the social network are performed by the same script :
+The functionning is similar to the other scripts, except that here all the crawling ways through the social network are performed by the same script:
 
 	python friendfeed-static.py -s	# or --simple : single retrieval of the public feed
 	python friendfeed-static.py -u	# or --users : iterate through a list of users only
 	-d or --deep option : perform a smart deep crawl (visit a user's history if it seems relevant)
 
-For a complete list of the options (such as verbose or benchmark/random modes), please refer to the help section :
+A bash script automates a series of executions:
+
+For a complete list of the options (such as verbose or benchmark/random modes), please refer to the help section:
 
 	python friendfeed-static.py -h
 
@@ -116,10 +119,10 @@ Prints a report on STDOUT and creates files.
 Related Projects
 --------------
 
-For downstream applications :
+For downstream applications:
 
-* [FLUX-Toolchain](https://github.com/adbar/url-compressor) (filtering and language-identification, under development)
+* [FLUX-Toolchain](https://github.com/adbar/flux-toolchain) (filtering and language identification, under development)
 
 * [URL compressor](https://github.com/adbar/url-compressor)
 
-Other crawling projects are hosted on [Google Code](http://code.google.com/u/114777084812550353886/)
+Other crawling projects are hosted on [Google Code](http://code.google.com/u/adrien.barbaresi/).
