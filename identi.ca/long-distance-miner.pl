@@ -224,3 +224,11 @@ sub extract_users {
 	}
 	return (\@ext, \@users);
 }
+
+sub writefile {
+	my ($filename, $type, $array) = @_;
+	open (my $fh, $type, $filename);
+	print $fh join("\n", @{$array});
+	close($fh);
+	return;
+}

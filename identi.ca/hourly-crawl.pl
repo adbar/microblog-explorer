@@ -91,6 +91,7 @@ foreach my $link (@internal) {
 	#}
 }
 
+# adjust sleeping time if the list seems long
 if (scalar(@int_explore) > 200) {
 	$sleepfactor *= 3;
 }
@@ -148,6 +149,7 @@ sub thread {
 	return (\@daily_spare, \@h_spare);
 }
 
+# could be shorter... (subroutine ?)
 my ($ds, $hs) = $throne->join();
 @daily_spare{@$ds} = () if defined @$ds;
 push (@hourly_spare, @$hs) if defined @$hs;

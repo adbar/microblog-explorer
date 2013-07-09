@@ -8,6 +8,7 @@
 ### The official API module for Python is much more complete : https://code.google.com/p/friendfeed-api/
 
 
+
 #####			SCRIPT OUTLINE			#####
 ###
 ###	1. Initialize					
@@ -22,6 +23,7 @@
 ###		fetch + analyze
 ###		smart deep crawl
 ###		uniq lists
+###             exit strategy
 ###	3. Main loop
 ###		crawl of the homepage
 ###		users on the list
@@ -29,6 +31,16 @@
 ###
 			####################
 
+
+# TODO:
+# interesting tld-extractor : https://github.com/john-kurkowski/tldextract
+# todo/done ?
+# internal links: if interntest.search(url): etc.
+# -df bug ?
+# reziubqzecdpoin... filter
+# frequent posts detection ?
+# ascii conversion test ?
+# spam url list ? https://meta.wikimedia.org/wiki/Spam_blacklist
 
 
 # Import functions
@@ -55,17 +67,6 @@ from collections import defaultdict
 bodies = defaultdict(int)
 
 
-# TODO:
-# interesting tld-extractor : https://github.com/john-kurkowski/tldextract
-# todo/done ?
-# internal links
-# -df bug ?
-# reziubqzecdpoin... filter
-# frequent posts detection ?
-# ascii conversion test ?
-# spam url list ? https://meta.wikimedia.org/wiki/Spam_blacklist
-
-
 ## Parse arguments and options
 parser = optparse.OptionParser(usage='usage: %prog [options] arguments')
 parser.add_option("-s", "--simple", dest="simple", action="store_true", default=False, help="simple crawl ONLY (just the public feed)")
@@ -79,15 +80,15 @@ parser.add_option("-v", "--verbose", dest="verbose", action="store_true", defaul
 options, args = parser.parse_args()
 
 
-userstodo, usersdone, links, rejectlist, spamlist, templinks, nodistinction, benchmarklist = ([] for i in range(8))
+userstodo, usersdone, links, rejectlist, spamlist, nodistinction = (set() for i in range(6))
+benchmarklist = list()
 
 
 # Check for already existing files / open file
 try:
     usersfile = open('ff-userstodo', 'r')
     for line in usersfile:
-        userstodo.append(line.rstrip())
-    userstodo = list(set(userstodo))
+        userstodo.add(line.rstrip())
     usersfile.close()
 except IOError:
     if options.users is True:
@@ -99,8 +100,7 @@ except IOError:
 try:
     usersfile = open('ff-usersdone', 'r')
     for line in usersfile:
-        usersdone.append(line.rstrip())
-    usersdone = list(set(usersdone))
+        usersdone.add(line.rstrip())
     usersfile.close()
 except IOError:
     pass
@@ -154,16 +154,17 @@ def req(url):
     global total_requests
     total_requests += 1
     req = Request(url)
-    req.add_header('Accept-encoding', 'gzip')
-    req.add_header('User-agent', 'Microblog-Explorer/0.2')
+    req.add_header('Accept', 'application/json')
+    req.add_header('Accept-Encoding', 'gzip')
+    req.add_header('User-Agent', 'Microblog-Explorer/0.2 +https://github.com/adbar/microblog-explorer')
 
     try:
         response = urlopen(req, timeout = timelimit)
     #except (URLError) as e:
     # if socket.timeout:
-    except Exception as e:
+    except Exception as err:
         try:
-            print ("Error: %r" % e, url)
+            print ("Error: %r" % err, url)
         except NameError:
             print ('Error')
         return 'error'
@@ -189,12 +190,12 @@ def req(url):
 
 # Find interesting external links
 def findlinks(code, step):
-    sublinks = list()
+    sublinks = set()
     subdict = defaultdict(int)
-    global userstodo
-    global usersdone
-    global nodistinction
-    global benchmarklist
+    global userstodo, usersdone, links, nodistinction, benchmarklist
+    if options.deep is True:
+        global templinks
+        templinks = set()
 
     ## 'If I strip everything I don't want, I'll be able to fetch what I want'...
     ## This is ugly : to be replaced by a 'real' parser ?
@@ -242,19 +243,20 @@ def findlinks(code, step):
                     nodistinction.append(url)
 
 		# blogspot & co. fake/porn/etc. blog check
+		## elif ?
                 urlre = re.search(r'http://(.+?)\.blogspot\.com', url)
                 if urlre and len(urlre.group(1)) > 20:
                     #print ('blogspot detected:', url)
-                    spamlist.append(url)
+                    spamlist.add(url)
                     continue
                 urlre = re.search(r'http://([a-z0-9]+?)\.seesaa\.net', url)
                 if urlre and len(urlre.group(1)) >= 15:
                     #print ('blogspot detected:', url)
-                    spamlist.append(url)
+                    spamlist.add(url)
                     continue
                 if urlspam.search(url):
                     #print ('blogspot detected:', url)
-                    spamlist.append(url)
+                    spamlist.add(url)
                     continue
 
                 body = re.sub('<.+?>.+?</.+?>', '', body)
@@ -272,7 +274,7 @@ def findlinks(code, step):
                     else:
                         if options.nolangcheck is False and options.benchmark is False:
                             # Check spelling to see if the link text is in English
-                            langtest = re.sub(r'\p{P}+', '', body)
+                            langtest = re.sub(r'[^\w\s]', '', body)
                             wordcount = len(re.findall(r'\w+', langtest)) # redundant, see enchant.tokenize
                             errcount = 0
                             try:
@@ -325,11 +327,13 @@ def findlinks(code, step):
 
             if len(url) > 10:
                 # store the link
-                sublinks.append(url)
+                if options.deep is True:
+                    templinks.add(url)
+                links.add(url)
                 # store the user behind the tweet
                 if step == 1 or step == 3:
                     if subdict[marker] not in usersdone:
-                        userstodo.append(subdict[marker])
+                        userstodo.add(subdict[marker])
                 # log option
                 if options.verbose is True:
                     print ('----------')
@@ -342,18 +346,15 @@ def findlinks(code, step):
                     print (url)
 
     # end of loop
-    sublinks = list(set(sublinks))
-    return sublinks
+    return
 
 
 # fetch + analyze
 def fetch_analyze(address, flswitch):
-    global templinks
     global total_errors
     jsoncode = req('http://friendfeed-api.com/v2/feed/' + address)
     if jsoncode is not 'error':
-        templinks = findlinks(jsoncode, flswitch)
-        links.extend(templinks)
+        findlinks(jsoncode, flswitch)
     else:
         total_errors += 1
         return 'error'
@@ -362,15 +363,14 @@ def fetch_analyze(address, flswitch):
 
 # smart deep crawl
 def smartdeep():
-    global templinks
-    hostnames = list()
+    hostnames = set()
     for link in templinks:
         hostname = urlparse(link).netloc
-        hostnames.append(hostname)
-    hostnames = list(set(hostnames))
+        hostnames.add(hostname)
     #writefile('ff-templinks', templinks, 'a')
     #writefile('ff-hostnames', hostnames, 'a')
     try:
+        # ratio calculated using the last seen links
         ratio = len(hostnames)/len(templinks)
         if ratio >= 0.2:	# could also be 0.05 or 0.075
             if options.verbose is True:
@@ -382,81 +382,14 @@ def smartdeep():
         return 0
 
 
-# uniq lists
-def uniqlists():
-    global userstodo; userstodo = list(set(userstodo));	#userstodo = filter(None, userstodo)
-    global usersdone; usersdone = list(set(usersdone))
-    global links; links = list(set(links))
-    global rejectlist; rejectlist = list(set(rejectlist))
-    global nodistinction; nodistinction = list(set(nodistinction))
-    global spamlist; spamlist = list(set(spamlist))
-
-
-######################		END OF FUNCTIONS
-
-
-### LOOPS
-
-# First pass : crawl of the homepage (public feed), skipped with the -u/--users switch
-
-if options.users is False:
-    value = fetch_analyze('public?maxcomments=0&maxlikes=0&num=100', 1)
-    if value is 'error' and total_errors == 1:
-        #sleeptime *= 2
-        for n in range(1, 3):
-            time.sleep(sleeptime)
-            value = fetch_analyze('public?maxcomments=0&maxlikes=0&num=100', 1)
-            if value is not 'error':
-                break
-        
-    #jsoncode = (jsoncode.decode('utf-8')).encode('utf8')
-
-
-# Second loop : go see the users on the list (and eventually their friends), skipped with the -s/--simple switch
-
-if options.simple is False:
-
-    uniqlists()
-
-    for userid in userstodo:
-        if options.requests is not None and total_requests >= options.requests:
-            break
-        usersdone.append(userid)
-        value = fetch_analyze(str(userid) + '?maxcomments=0&maxlikes=0&num=100', 2)
-
-	# smart deep crawl
-        if options.deep is True and value is not 'error':
-           for num in range(1, 6):
-               result = smartdeep()
-               if result == 1:
-                   value = fetch_analyze(str(userid) + '?maxcomments=0&maxlikes=0&start=' + str(num) + '00&num=100', 2)
-                   if value is 'error':
-                       break
-
-    # crawl the 'friends' page
-    if options.friends is True:
-        for userid in userstodo:
-            value = fetch_analyze(str(userid) + '/friends?maxcomments=0&maxlikes=0&num=100', 3)
-
-            # smart deep crawl
-            if options.deep is True and value is not 'error':
-               for num in range(1, 6):
-                   result = smartdeep()
-                   if result == 1:
-                       value = fetch_analyze(str(userid) + '/friends?maxcomments=0&maxlikes=0&start=' + str(num) + '00&num=100', 3)
-                       if value is 'error':
-                           break
-
-
 # Exit strategy
 # Write all the logs
 @atexit.register
 def the_end():
-    uniqlists()
     for user in usersdone:
         try:
             userstodo.remove(user)
-        except ValueError:
+        except (ValueError, KeyError):
             pass
 
     # print infos
@@ -488,3 +421,58 @@ def the_end():
 
     # execution time and exit
     print ('Execution time (secs): {0:.2f}' . format(time.time() - start_time))
+
+
+
+######################		END OF FUNCTIONS
+
+
+### LOOPS
+
+# First pass : crawl of the homepage (public feed), skipped with the -u/--users switch
+
+if options.users is False:
+    value = fetch_analyze('public?maxcomments=0&maxlikes=0&num=100', 1)
+    if value is 'error' and total_errors == 1:
+        #sleeptime *= 2
+        for n in range(1, 3):
+            time.sleep(sleeptime)
+            value = fetch_analyze('public?maxcomments=0&maxlikes=0&num=100', 1)
+            if value is not 'error':
+                break
+        
+    #jsoncode = (jsoncode.decode('utf-8')).encode('utf8')
+
+
+# Second loop : go see the users on the list (and eventually their friends), skipped with the -s/--simple switch
+
+if options.simple is False:
+
+    for userid in userstodo:
+        if options.requests is not None and total_requests >= options.requests:
+            break
+        usersdone.update(userid)
+        value = fetch_analyze(str(userid) + '?maxcomments=0&maxlikes=0&num=100', 2)
+
+	# smart deep crawl
+        if options.deep is True and value is not 'error':
+           for num in range(1, 6):
+               result = smartdeep()
+               if result == 1:
+                   value = fetch_analyze(str(userid) + '?maxcomments=0&maxlikes=0&start=' + str(num) + '00&num=100', 2)
+                   if value is 'error':
+                       break
+
+    # crawl the 'friends' page
+    if options.friends is True:
+        for userid in userstodo:
+            value = fetch_analyze(str(userid) + '/friends?maxcomments=0&maxlikes=0&num=100', 3)
+
+            # smart deep crawl
+            if options.deep is True and value is not 'error':
+               for num in range(1, 6):
+                   result = smartdeep()
+                   if result == 1:
+                       value = fetch_analyze(str(userid) + '/friends?maxcomments=0&maxlikes=0&start=' + str(num) + '00&num=100', 3)
+                       if value is 'error':
+                           break

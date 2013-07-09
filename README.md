@@ -2,13 +2,13 @@ Microblog-Explorer
 ==================
 
 
-**The Microblog-Explorer project is about gathering links from social networks (FriendFeed, identi.ca, and Reddit) to use them as crawling seeds.** The messages themselves are not being stored so far. The links that are obviously pointing at images or videos are filtered out. 
+**The Microblog-Explorer project is about gathering URLs from social networks (FriendFeed, identi.ca, and Reddit) to use them as crawling seeds.** The messages themselves are not being stored so far. The URLs that are obviously pointing at images or videos are filtered out. 
 
 The scripts are still under development, they work but may not be optimized yet. They are tested on UNIX (Debian flavors), they should work on other UNIX-like systems provided the modules needed are installed.
 
-Scientific paper: Adrien Barbaresi. 2013. Crawling microblogging services to gather language-classified URLs. Workflow and case study. In *Proceedings of ACL Student Research Workshop*, Sofia. To appear.
+Scientific paper: Adrien Barbaresi. 2013. [Crawling microblogging services to gather language-classified URLs. Workflow and case study.](http://halshs.archives-ouvertes.fr/docs/00/84/08/61/PDF/ABarbaresi_ACL-SRW_13_final.pdf) In *Proceedings of ACL Student Research Workshop*, Sofia. To appear.
 
-Other interests could be text analysis or network visualization, but they are not the priority right now.
+Other interests include text analysis or network visualization, but they are not the priority right now.
 
 Copyright (C) Adrien Barbaresi, 2012-2013.
 
@@ -16,17 +16,19 @@ Copyright (C) Adrien Barbaresi, 2012-2013.
 Installation
 ------------
 
-Recommandations for the Debian/Ubuntu systems (probably useful for other Linux distributions) :
+Recommandations for the Debian/Ubuntu systems (probably useful for other Linux distributions):
 
 * Install or make sure you have following packages installed: *libtry-tiny-perl libstring-crc32-perl libhtml-strip-perl libhtml-clean-perl python-enchant*
 
-* Use the default library (LWP, possibly slower) or open the CPAN console (e.g. sudo cpan) and say `install Furl`, as this Perl module is not installed by default. The script detects which module is available.
+* Perl modules: a few scripts can use both the default library (LWP, possibly slower) or FURL, a faster alternative. This Perl module is not installed by default (`install Furl` in CPAN). The scripts detect which module is available. This software should work with Perl 5.10 but will work better with 5.14 or 5.16 (mainly because of Unicode support).
+
+* Python version: the scripts were written with Python 2.6 and 2.7 in mind. As is, they won't work with Python 3, but a move in that direction should take place soon.
 
 
 Identi.ca
 ---------
 
-The files uploaded so far enable to gather external (and internal) links from identi.ca. The advantages compared to Twitter include the CC license of the messages, the absence of limitations (to my knowledge) and the relative small amount of messages (which can also be a problem).
+The files uploaded so far enable to gather external (and internal) links from [identi.ca](https://identi.ca/). The advantages compared to Twitter include the CC license of the messages, the absence of limitations (to my knowledge) and the relative small amount of messages (which can also be a problem).
 
 
 ### Hourly crawl
@@ -69,7 +71,7 @@ The Bash script deletes duplicates, it can be run before an export of the data o
 Reddit
 ------
 
-This crawler gathers (nearly) all external and internal links starting from a given reddit page, a multi-reddit expression or a given language code (which is a pre-compiled multi-reddit).
+This crawler gathers (nearly) all external and internal links it can find. It starts from user input: a given reddit page, a multi-reddit expression or a given language code (which is a pre-compiled multi-reddit).
 
 All the functions described here are featured by the API version which gets shorter pages (in JSON format) containing 100 links instead of 25. The official API limitations are respected, with a few more than 2 seconds between two requests.
 
@@ -95,19 +97,19 @@ The 'weekly-crawl.sh' shell script performs a crawl of all the given languages.
 FriendFeed
 ----------
 
-Using the API, the script performs crawls according to the following options : 'simple' (homepage only), 'users' (only explore a given list of users), 'friends' (look for the friends channel), deep (a smart deep crawl targeting the interesting users, i.e. the users by which a significant number of relevant links was found).
+Using the API, the script performs crawls according to the following options: 'simple' (homepage only), 'users' (only explore a given list of users), 'friends' (look for the friends channel), 'deep' (a smart deep crawl targeting the interesting users, i.e. the users by which a significant number of relevant links was found).
 
-As there are no official limitations, the time between two requests can vary. After a certain number of successful requests with little or no sleep, the server starts dropping most of the inbound connections.
+As there are no official limitations, the time between two requests can vary. Experience shows that after a certain number of successful requests with little or no sleep, the server starts dropping most of the inbound connections.
 
-The link selection is similar to the reddit crawls : using a spell-checked, the script discriminates between links whose titles are mostly English and others which are bound to be in the target language. This option can be bypassed manually by using `--no-language-check`.
+The link selection is similar to the reddit crawls: using a spell checker, the script discriminates between links whose titles are mostly English and others which are bound to be in the target language. This option can be bypassed manually by using `--no-language-check`.
 
-The functionning is similar to the other scripts, except that here all the crawling ways through the social network are performed by the same script:
+The functionning is similar to the other scripts, except that here all the crawling methods through the social network are performed by the same script:
 
 	python friendfeed-static.py -s	# or --simple : single retrieval of the public feed
 	python friendfeed-static.py -u	# or --users : iterate through a list of users only
 	-d or --deep option : perform a smart deep crawl (visit a user's history if it seems relevant)
 
-A bash script automates a series of executions:
+A bash script (`friendfeed-repeat.sh`) automates a series of executions (20 is the default).
 
 For a complete list of the options (such as verbose or benchmark/random modes), please refer to the help section:
 
@@ -116,8 +118,10 @@ For a complete list of the options (such as verbose or benchmark/random modes), 
 Prints a report on STDOUT and creates files.
 
 
-Related Projects
---------------
+Related links
+------------
+
+Blog post: [Introducing the Microblog Explorer](http://perso.ens-lyon.fr/adrien.barbaresi/blog/?p=1523).
 
 For downstream applications:
 

@@ -23,7 +23,7 @@ our @EXPORT = qw(&fetch &extract);
 our $timeout = 5; # change this ?
 
 my $furl = Furl::HTTP->new(
-        agent   => 'Microblog-Explorer/0.1',
+        agent   => 'Microblog-Explorer/0.2 +https://github.com/adbar/microblog-explorer',
         timeout => $timeout,
 	headers => [ 'Accept-Encoding' => 'gzip' ], # may run into problems (error to catch)
 );

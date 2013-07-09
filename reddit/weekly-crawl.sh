@@ -13,7 +13,7 @@ echo "`date`:$@" >> reddit-crawl.log
 archive=reddit-crawl.tar.bz2
 if [ -f $archive ]
 	then
-	tar -xjf $archive
+	tar xjf $archive
 fi
 
 lcodes=( "cs" "da" "de" "es" "fi" "fr" "hi" "hr" "it" "nl" "no" "po" "pt" "ro" "ru" "sv" "tr" )
@@ -32,7 +32,7 @@ trap 'rm -f $TMP1' EXIT
 # Main loop, calls the api-crawl script
 for lang in ${lcodes[@]}; do
 
-	python api-crawl.py -u -l $lang &>> reddit-crawl.log	# the --no-language-check option may be useful
+	python api-crawl.py -u -l $lang &>> reddit-crawl.log	# the --no-language-check option may be useful, same thing for --path
 
 	EXT=$lang"_external"
 	EXTUS=$lang"_extuserslinks"
@@ -53,4 +53,4 @@ for lang in ${lcodes[@]}; do
 done
 
 # Compress the lists
-tar -cjf reddit-crawl.tar.bz2 *_*
+tar cjf reddit-crawl.tar.bz2 *_*
