@@ -33,6 +33,7 @@
 
 
 # TODO:
+# timeout ?
 # interesting tld-extractor : https://github.com/john-kurkowski/tldextract
 # todo/done ?
 # internal links: if interntest.search(url): etc.
@@ -77,6 +78,7 @@ parser.add_option("-b", "--benchmark", dest="benchmark", action="store_true", de
 parser.add_option("--no-language-check", dest="nolangcheck", action="store_true", default=False, help="disable the language check")
 parser.add_option("-r", "--requests", dest="requests", help="max requests")
 parser.add_option("-v", "--verbose", dest="verbose", action="store_true", default=False, help="debug mode (body and ids info)")
+parser.add_option("-p", "--path", dest="path", help="path to the files")
 options, args = parser.parse_args()
 
 
@@ -85,8 +87,11 @@ benchmarklist = list()
 
 
 # Check for already existing files / open file
+filename = 'ff-userstodo'
+if options.path:
+    filename = options.path + filename
 try:
-    usersfile = open('ff-userstodo', 'r')
+    usersfile = open(filename, 'r')
     for line in usersfile:
         userstodo.add(line.rstrip())
     usersfile.close()
@@ -97,8 +102,11 @@ except IOError:
     else:
         pass
 
+filename = 'ff-usersdone'
+if options.path:
+    filename = options.path + filename
 try:
-    usersfile = open('ff-usersdone', 'r')
+    usersfile = open(filename, 'r')
     for line in usersfile:
         usersdone.add(line.rstrip())
     usersfile.close()
@@ -139,11 +147,12 @@ interntest = re.compile(r'http://friendfeed.com/')
 
 # write/append to files
 def writefile(filename, listname, mode):
-    #filename = options.lcode + '_' + filename
+    if options.path:
+        filename = options.path + filename
     try:
         out = open(filename, mode)
     except IOError:
-        sys.exit ("could not open output file")
+        sys.exit ('could not open output file: ' + filename)
     for link in listname:
         out.write(str(link) + "\n")
     out.close()
@@ -192,7 +201,7 @@ def req(url):
 def findlinks(code, step):
     sublinks = set()
     subdict = defaultdict(int)
-    global userstodo, usersdone, links, nodistinction, benchmarklist
+    global userstodo, usersdone, links, rejectlist, nodistinction, benchmarklist
     if options.deep is True:
         global templinks
         templinks = set()
@@ -287,7 +296,7 @@ def findlinks(code, step):
                                         if options.benchmark is True and step == 1:
                                             benchmarklist.append(1)
                                     else:
-                                        rejectlist.append(url)
+                                        rejectlist.add(url)
                                         if options.benchmark is True and step == 1:
                                             benchmarklist.append(0)
                                 # the length of body has been checked, so that means it contained only punctuation marks
@@ -402,7 +411,7 @@ def the_end():
     # append/write to files
     writefile('ff-usersdone', usersdone, 'a')
     print ('New users:\t', len(userstodo))
-    writefile('ff-userstodo', userstodo, 'w')
+    writefile('ff-userstodo', userstodo, 'a')
     print ('Rejected:\t', len(rejectlist))
     writefile('ff-rejected', rejectlist, 'a')
     print ('Spam:\t\t', len(spamlist))
